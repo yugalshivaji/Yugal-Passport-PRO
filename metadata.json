@@ -1,0 +1,6 @@
+{
+  "name": "YUGAL Passport Photo",
+  "description": "A premium, high-density AI-powered passport photo generation tool with tactical dark-mode UI, secure cloud storage, and professional PDF sheet generation.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["AI Image Enhancement", "Background Removal", "PDF Generation", "Google Drive Integration"]
+}
