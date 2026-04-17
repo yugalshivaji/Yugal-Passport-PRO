@@ -135,24 +135,19 @@ app.post('/api/process', upload.array('images'), async (req: any, res) => {
   }
 });
 
-app.post('/api/enhance', upload.single('image'), async (req: any, res) => {
+app.post('/api/enhance', async (req: any, res) => {
   try {
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: 'No image provided' });
+    const { image } = req.body;
+    if (!image) return res.status(400).json({ error: 'No image provided' });
 
-    // Upload to Cloudinary with restoration
     const result = await new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.uploader.upload_stream(
-        {
-          folder: 'yugal_passport',
-          transformation: [{ effect: 'gen_restore' }]
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
-      );
-      uploadStream.end(file.buffer);
+        cloudinary.uploader.upload(`data:image/jpeg;base64,${image}`, {
+            folder: 'yugal_passport',
+            transformation: [{ effect: 'gen_restore' }]
+        }, (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+        });
     }) as any;
 
     res.json({ url: result.secure_url });
@@ -162,10 +157,10 @@ app.post('/api/enhance', upload.single('image'), async (req: any, res) => {
   }
 });
 
-app.post('/api/remove-bg', upload.single('image'), async (req: any, res) => {
+app.post('/api/remove-bg', async (req: any, res) => {
   try {
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: 'No image provided' });
+    const { image } = req.body;
+    if (!image) return res.status(400).json({ error: 'No image provided' });
 
     const userKey = req.headers['x-user-api-key'];
     const apiKey = userKey || process.env.REMOVE_BG_API_KEY;
@@ -177,7 +172,7 @@ app.post('/api/remove-bg', upload.single('image'), async (req: any, res) => {
     const response = await axios.post(
       'https://api.remove.bg/v1.0/removebg',
       {
-        image_file_b64: file.buffer.toString('base64'),
+        image_file_b64: image,
         size: 'auto'
       },
       {

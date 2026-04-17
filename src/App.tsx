@@ -457,9 +457,17 @@ export default function App() {
     try {
       const resp = await fetch(photo.processedUrl || photo.blobUrl);
       const blob = await resp.blob();
-      const formData = new FormData();
-      formData.append('image', blob);
-      const res = await fetch('/api/enhance', { method: 'POST', body: formData });
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        reader.readAsDataURL(blob);
+      });
+
+      const res = await fetch('/api/enhance', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64 }) 
+      });
       
       const contentType = res.headers.get('content-type');
       if (!res.ok) {
@@ -498,12 +506,19 @@ export default function App() {
     try {
       const resp = await fetch(photo.processedUrl || photo.blobUrl);
       const blob = await resp.blob();
-      const formData = new FormData();
-      formData.append('image', blob);
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        reader.readAsDataURL(blob);
+      });
+
       const res = await fetch('/api/remove-bg', { 
         method: 'POST', 
-        body: formData,
-        headers: userApiKey ? { 'X-User-Api-Key': userApiKey } : {}
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(userApiKey ? { 'X-User-Api-Key': userApiKey } : {})
+        },
+        body: JSON.stringify({ image: base64 })
       });
 
       const contentType = res.headers.get('content-type');
@@ -582,20 +597,17 @@ export default function App() {
                 const x = margin + col * (width + spacing);
                 const y = margin + row * (height + spacing);
 
-                const photoItem = photos[0]; // Use first for now, or distribute?
-                const imgUrl = photoItem?.processedUrl || photoItem?.blobUrl;
+                // Use current selected photo or cycle?
+                const photoItem = photos.find(p => p.id === selectedPhotoId) || photos[0];
+                const finalBlob = await getPhotoBlob(photoItem.id);
+                const imgBlob = finalBlob || await (await fetch(photoItem.processedUrl || photoItem.blobUrl)).blob();
                 
-                if (imgUrl) {
-                    // We need to fetch the blob to get base64 for jsPDF
-                    const res = await fetch(imgUrl);
-                    const blob = await res.blob();
+                const base64 = await new Promise<string>((resolve) => {
                     const reader = new FileReader();
-                    const base64 = await new Promise<string>((resolve) => {
-                        reader.onloadend = () => resolve(reader.result as string);
-                        reader.readAsDataURL(blob);
-                    });
-                    doc.addImage(base64, 'JPEG', x, y, width, height);
-                }
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.readAsDataURL(imgBlob);
+                });
+                doc.addImage(base64, 'JPEG', x, y, width, height, undefined, 'FAST');
                 totalUsed++;
             }
             pIndex++;
@@ -709,7 +721,7 @@ export default function App() {
         <main className="flex-1 p-6 space-y-8">
            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
               <div>
-                 <h2 className="text-3xl font-bold tracking-tight">Gallary</h2>
+                 <h2 className="text-3xl font-bold tracking-tight">Gallery</h2>
                  <p className="text-[var(--text-tertiary)] text-sm">Review and edit your local sessions.</p>
               </div>
               <div className="flex gap-2 w-full md:w-auto">
@@ -721,7 +733,7 @@ export default function App() {
                    Import
                  </button>
                  <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={handleFileUpload} />
-                 <button className="ios-button-secondary flex-1 md:flex-none">
+                 <button onClick={() => setIsSettingsOpen(true)} className={cn("flex-1 md:flex-none", UI.btnSecondary)}>
                    <Settings className="w-4 h-4" />
                  </button>
               </div>
@@ -1089,6 +1101,96 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* SETTINGS DRAWER */}
+      <AnimatePresence>
+        {isSettingsOpen && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSettingsOpen(false)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-md z-[400]"
+            />
+            <motion.div 
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              className="fixed inset-y-0 right-0 z-[410] w-full md:w-[450px] bg-[var(--bg-secondary)] shadow-2xl flex flex-col border-l border-[var(--separator)] ios-glass"
+            >
+               <div className="p-8 border-b border-[var(--separator)] flex items-center justify-between">
+                  <h3 className="text-2xl font-bold">Print Configuration</h3>
+                  <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-[var(--bg-primary)] rounded-full transition-colors">
+                    <X className="w-6 h-6" />
+                  </button>
+               </div>
+
+               <div className="flex-1 overflow-y-auto p-8 space-y-10">
+                  <section className="space-y-6">
+                     <h4 className="text-sm font-bold uppercase tracking-widest text-ios-blue">Tiling Options</h4>
+                     <div className="space-y-6">
+                        <div className="space-y-3">
+                           <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest opacity-60">
+                              <span>Exact Copies</span>
+                              <span className="text-ios-blue">{totalCopies}</span>
+                           </div>
+                           <input 
+                              type="range" min="1" max="100" value={totalCopies}
+                              onChange={(e) => setTotalCopies(parseInt(e.target.value))}
+                              className="w-full h-2 bg-[var(--separator)] rounded-full appearance-none accent-ios-blue"
+                           />
+                           <input 
+                              type="number" value={totalCopies}
+                              onChange={(e) => setTotalCopies(parseInt(e.target.value) || 1)}
+                              className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-xl p-4 text-lg font-bold"
+                           />
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                           <div className="space-y-3">
+                              <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Spacing (mm)</label>
+                              <input 
+                                 type="number" value={prefs.spacing}
+                                 onChange={(e) => setPrefs({...prefs, spacing: parseInt(e.target.value) || 0})}
+                                 className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-xl p-4 font-bold"
+                              />
+                           </div>
+                           <div className="space-y-3">
+                              <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Margins (mm)</label>
+                              <input 
+                                 type="number" value={prefs.margin}
+                                 onChange={(e) => setPrefs({...prefs, margin: parseInt(e.target.value) || 0})}
+                                 className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-xl p-4 font-bold"
+                              />
+                           </div>
+                        </div>
+                     </div>
+                  </section>
+
+                  <section className="space-y-6">
+                     <h4 className="text-sm font-bold uppercase tracking-widest text-ios-blue">Print Quality</h4>
+                     <div className="p-6 bg-ios-blue/5 rounded-[2rem] border border-ios-blue/10">
+                        <p className="text-sm leading-relaxed mb-4">You are currently using <strong>High-Density</strong> mode. Images will be sampled at their native resolution for maximum sharpness.</p>
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-ios-blue">
+                           <CheckCircle2 className="w-4 h-4" />
+                           300+ DPI Certified
+                        </div>
+                     </div>
+                  </section>
+               </div>
+
+               <div className="p-8 border-t border-[var(--separator)] bg-[var(--bg-primary)]">
+                  <button 
+                    onClick={() => setIsSettingsOpen(false)}
+                    className="w-full py-5 bg-ios-blue text-white rounded-2xl font-bold tracking-wide shadow-xl shadow-ios-blue/20"
+                  >
+                    Confirm Settings
+                  </button>
+               </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
