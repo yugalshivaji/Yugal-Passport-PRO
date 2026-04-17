@@ -22,7 +22,14 @@ import {
   ChevronRight,
   Filter,
   RefreshCw,
-  Search
+  Search,
+  Moon,
+  Sun,
+  X,
+  CheckCircle2,
+  MoreVertical,
+  LayoutGrid,
+  Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Cropper from 'react-cropper';
@@ -63,6 +70,14 @@ export default function App() {
   const [isCropping, setIsCropping] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('theme') === 'dark' || 
+        (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    }
+    return false;
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('All');
   const [totalCopies, setTotalCopies] = useState(8);
@@ -76,6 +91,20 @@ export default function App() {
 
   const cropperRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Theme support
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (darkMode) {
+      root.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      root.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [darkMode]);
 
   // Layout Calculation Helper
   const calculateLayout = () => {
@@ -110,11 +139,49 @@ export default function App() {
     localStorage.setItem('yugal_app_data', JSON.stringify({ photos, prefs, totalCopies }));
   }, [photos, prefs, totalCopies]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
+  const startCamera = async () => {
+    setIsCameraActive(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user', width: 1280, height: 720 } 
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error("Camera access denied:", err);
+      setIsCameraActive(false);
+    }
+  };
 
-    const newEntries: PhotoEntry[] = Array.from(files).map((file: File) => ({
+  const stopCamera = () => {
+    const stream = videoRef.current?.srcObject as MediaStream;
+    stream?.getTracks().forEach(track => track.stop());
+    setIsCameraActive(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+      
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+          addPhotoEntry(file);
+          stopCamera();
+        }
+      }, 'image/jpeg', 0.95);
+    }
+  };
+
+  const addPhotoEntry = (file: File) => {
+    const newEntry: PhotoEntry = {
       id: Math.random().toString(36).substring(7),
       originalName: file.name,
       blobUrl: URL.createObjectURL(file),
@@ -125,9 +192,15 @@ export default function App() {
       category: 'Uncategorized',
       version: 1,
       history: []
-    }));
+    };
+    setPhotos(prev => [...prev, newEntry]);
+    setSelectedPhotoId(newEntry.id);
+  };
 
-    setPhotos(prev => [...prev, ...newEntries]);
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach(addPhotoEntry);
   };
 
   const deletePhoto = (id: string) => {
@@ -172,12 +245,12 @@ export default function App() {
     
     setIsProcessing(true);
     try {
-      const response = await fetch(photo.processedUrl || photo.blobUrl);
+      const response = await window.fetch(photo.processedUrl || photo.blobUrl);
       const blob = await response.blob();
       const formData = new FormData();
       formData.append('image', blob);
 
-      const res = await fetch('/api/enhance', { method: 'POST', body: formData });
+      const res = await window.fetch('/api/enhance', { method: 'POST', body: formData });
       const data = await res.json();
       
       if (data.url) {
@@ -200,12 +273,12 @@ export default function App() {
     
     setIsProcessing(true);
     try {
-      const response = await fetch(photo.processedUrl || photo.blobUrl);
+      const response = await window.fetch(photo.processedUrl || photo.blobUrl);
       const blob = await response.blob();
       const formData = new FormData();
       formData.append('image', blob);
 
-      const res = await fetch('/api/remove-bg', { method: 'POST', body: formData });
+      const res = await window.fetch('/api/remove-bg', { method: 'POST', body: formData });
       const processedBlob = await res.blob();
       const url = URL.createObjectURL(processedBlob);
       
@@ -226,7 +299,7 @@ export default function App() {
     try {
       const formData = new FormData();
       for (const photo of photos) {
-        const response = await fetch(photo.processedUrl || photo.blobUrl);
+        const response = await window.fetch(photo.processedUrl || photo.blobUrl);
         const blob = await response.blob();
         formData.append('images', blob);
       }
@@ -237,7 +310,7 @@ export default function App() {
       formData.append('borderSize', prefs.borderSize.toString());
       formData.append('totalCopies', totalCopies.toString());
 
-      const res = await fetch('/api/process', { method: 'POST', body: formData });
+      const res = await window.fetch('/api/process', { method: 'POST', body: formData });
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       window.open(url);
@@ -256,380 +329,223 @@ export default function App() {
   });
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-blue-500/30">
-      {/* Background Decorative Elements */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 blur-[120px] rounded-full" />
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
-      </div>
-
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-white/5 bg-black/50 backdrop-blur-xl px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans selection:bg-ios-blue/30 transition-colors duration-300">
+      {/* iOS Status Bar Replacement / Header */}
+      <header className="sticky top-0 z-50 ios-glass px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+          <div className="w-10 h-10 bg-ios-blue rounded-xl flex items-center justify-center shadow-lg shadow-ios-blue/20">
             <Zap className="text-white w-6 h-6" fill="currentColor" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight uppercase">YUGAL</h1>
-            <p className="text-[10px] text-white/40 font-mono tracking-widest uppercase">Passport Photo V2.0</p>
+            <h1 className="text-lg font-bold tracking-tight">YUGAL</h1>
+            <p className="text-[10px] text-[var(--text-tertiary)] font-mono tracking-widest uppercase">Passport V2.1</p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 group-focus-within:text-blue-500 transition-colors" />
+        
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setDarkMode(!darkMode)}
+            className="p-2.5 rounded-full bg-[var(--bg-secondary)] border border-[var(--separator)] text-[var(--text-secondary)] hover:bg-[var(--bg-primary)] transition-all active:scale-95"
+          >
+            {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
+          
+          <button 
+            onClick={() => setIsCameraActive(true) || startCamera()}
+            className="p-2.5 rounded-full bg-ios-blue text-white shadow-lg shadow-ios-blue/20 hover:brightness-110 transition-all active:scale-95"
+          >
+            <Camera className="w-5 h-5" />
+          </button>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="max-w-6xl mx-auto p-4 pb-32">
+        {/* Search & Stats Bar */}
+        <div className="flex flex-col md:flex-row gap-4 mb-8">
+          <div className="relative flex-1 group">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] group-focus-within:text-ios-blue transition-colors" />
             <input 
               type="text" 
-              placeholder="Search images..."
-              className="bg-white/5 border border-white/10 rounded-full pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 w-64 transition-all"
+              placeholder="Search moments..."
+              className="w-full bg-[var(--bg-secondary)] border border-[var(--separator)] rounded-2xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 transition-all shadow-sm"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium transition-all shadow-lg shadow-blue-600/20 active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Photos</span>
-          </button>
-          <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={handleFileUpload} />
-        </div>
-      </header>
-
-      <main className="flex h-[calc(100vh-73px)]">
-        {/* Sidebar Controls */}
-        <aside className="w-80 border-r border-white/5 bg-white/2 backdrop-blur-md p-6 overflow-y-auto custom-scrollbar">
-          <div className="space-y-8">
-            <section>
-              <h3 className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <Settings className="w-3 h-3" />
-                Sheet Settings
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] text-white/60">Width (mm)</label>
-                  <input 
-                    type="number" 
-                    value={prefs.defaultWidth}
-                    onChange={(e) => setPrefs({...prefs, defaultWidth: parseInt(e.target.value) || 35})}
-                    className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] text-white/60">Height (mm)</label>
-                  <input 
-                    type="number" 
-                    value={prefs.defaultHeight}
-                    onChange={(e) => setPrefs({...prefs, defaultHeight: parseInt(e.target.value) || 45})}
-                    className="w-full bg-white/5 border border-white/10 rounded p-2 text-sm focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-              <div className="mt-4 space-y-3">
-                <div className="flex justify-between items-center bg-white/5 p-3 rounded-lg border border-white/5">
-                  <span className="text-xs text-white/60">Grid Spacing</span>
-                  <input 
-                    type="range" min="0" max="20" 
-                    value={prefs.spacing}
-                    onChange={(e) => setPrefs({...prefs, spacing: parseInt(e.target.value)})}
-                    className="w-24 accent-blue-500" 
-                  />
-                </div>
-                <div className="flex justify-between items-center bg-white/5 p-3 rounded-lg border border-white/5">
-                  <span className="text-xs text-white/60">Border Size</span>
-                  <input 
-                    type="range" min="0" max="5" 
-                    value={prefs.borderSize}
-                    onChange={(e) => setPrefs({...prefs, borderSize: parseInt(e.target.value)})}
-                    className="w-24 accent-blue-500" 
-                  />
-                </div>
-              </div>
-            </section>
-
-            <section>
-              <h3 className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <Filter className="w-3 h-3" />
-                Filter by Category
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {categories.map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setFilterCategory(cat)}
-                    className={cn(
-                      "px-3 py-1 rounded-full text-xs transition-all border",
-                      filterCategory === cat 
-                        ? "bg-blue-600 border-blue-500 text-white" 
-                        : "bg-white/5 border-white/10 text-white/40 hover:bg-white/10"
-                    )}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section>
-              <h3 className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <Maximize2 className="w-3 h-3" />
-                Print Configuration
-              </h3>
-              <div className="space-y-4">
-                <div className="bg-white/5 p-4 rounded-xl border border-white/5">
-                  <label className="text-[10px] text-white/40 uppercase tracking-widest block mb-2">Total Copies Required</label>
-                  <div className="flex items-center gap-4">
-                    <button onClick={() => setTotalCopies(Math.max(1, totalCopies - 1))} className="w-8 h-8 rounded bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10">-</button>
-                    <input 
-                      type="number" 
-                      value={totalCopies}
-                      onChange={(e) => setTotalCopies(parseInt(e.target.value) || 1)}
-                      className="flex-1 bg-transparent text-center text-lg font-bold focus:outline-none"
-                    />
-                    <button onClick={() => setTotalCopies(totalCopies + 1)} className="w-8 h-8 rounded bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10">+</button>
-                  </div>
-                  <div className="mt-2 text-[10px] text-blue-400 font-mono text-center">
-                    Estimated: {totalPages} {totalPages === 1 ? 'Page' : 'Pages'}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <div className="pt-4 border-t border-white/5">
-              <button 
-                onClick={() => setIsPreviewing(true)}
-                disabled={photos.length === 0 || isProcessing}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed mb-2 shadow-lg shadow-blue-600/20"
+          
+          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar px-1">
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setFilterCategory(cat)}
+                className={cn(
+                  "px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all border shadow-sm",
+                  filterCategory === cat 
+                    ? "bg-ios-blue border-transparent text-white" 
+                    : "bg-[var(--bg-secondary)] border-[var(--separator)] text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]"
+                )}
               >
-                <Maximize2 className="w-5 h-5" />
-                <span>Preview Layout</span>
+                {cat}
               </button>
-              <button 
-                onClick={generatePDF}
-                disabled={photos.length === 0 || isProcessing}
-                className="w-full flex items-center justify-center gap-2 bg-white text-black py-3 rounded-xl font-bold hover:bg-white/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isProcessing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                <span>Download Print PDF</span>
-              </button>
-              <p className="text-[10px] text-center text-white/20 mt-3 font-mono">ULTRA-HIGH RES EXPORT ENABLED</p>
-            </div>
+            ))}
           </div>
-        </aside>
+        </div>
 
-        {/* Workspace Display */}
-        <section className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-black/20">
-          <AnimatePresence mode="popLayout">
-            {filteredPhotos.length === 0 ? (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="h-full flex flex-col items-center justify-center text-center space-y-6"
-              >
-                <div className="w-24 h-24 bg-white/5 rounded-full flex items-center justify-center border border-white/10 mb-2">
-                  <Upload className="w-10 h-10 text-white/20" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-white/80">Workspace is empty</h2>
-                  <p className="text-white/40 max-w-sm mx-auto mt-2">Upload your portrait photos to start creating high-density passport photo sheets.</p>
-                </div>
+        {/* Empty State / Photo Grid */}
+        <AnimatePresence mode="popLayout">
+          {filteredPhotos.length === 0 ? (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="flex flex-col items-center justify-center py-20 text-center"
+            >
+              <div className="w-24 h-24 bg-ios-blue/5 rounded-full flex items-center justify-center mb-6 relative">
+                <ImageIcon className="w-10 h-10 text-ios-blue opacity-40" />
+                <motion.div 
+                  animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.2, 0.5] }}
+                  transition={{ duration: 3, repeat: Infinity }}
+                  className="absolute inset-0 bg-ios-blue rounded-full"
+                />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">Ready to Print?</h2>
+              <p className="text-[var(--text-tertiary)] max-w-xs mx-auto mb-8">
+                Take a photo or upload from your gallery to create professional passport sheets locally.
+              </p>
+              
+              <div className="flex flex-col w-full max-w-xs gap-3 font-semibold">
+                <button 
+                  onClick={() => setIsCameraActive(true) || startCamera()}
+                  className="ios-button-primary"
+                >
+                  <Camera className="w-5 h-5" />
+                  Take a Photo
+                </button>
                 <button 
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-8 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-medium transition-all"
+                  className="ios-button-secondary"
                 >
-                  Browse Files
+                  <Upload className="w-5 h-5" />
+                  Import from Files
                 </button>
-              </motion.div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {filteredPhotos.map((photo) => (
-                  <motion.div
-                    key={photo.id}
-                    layout
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    className={cn(
-                      "group relative bg-white/5 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-md hover:border-blue-500/50 transition-all",
-                      selectedPhotoId === photo.id && "ring-2 ring-blue-500 border-transparent shadow-[0_0_30px_rgba(59,130,246,0.2)]"
-                    )}
-                    onClick={() => setSelectedPhotoId(photo.id)}
-                  >
-                    <div className="aspect-[3/4] overflow-hidden relative">
-                      <img 
-                        src={photo.processedUrl || photo.blobUrl} 
-                        alt="Preview" 
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                      <div className="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); startCrop(photo.id); }}
-                          className="p-2 bg-black/60 shadow-lg backdrop-blur-md rounded-lg hover:bg-blue-600 transition-colors"
-                        >
-                          <Crop className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); deletePhoto(photo.id); }}
-                          className="p-2 bg-black/60 shadow-lg backdrop-blur-md rounded-lg hover:bg-red-600 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="absolute bottom-0 inset-x-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent flex flex-col justify-end p-4">
-                        <p className="text-xs font-medium truncate mb-1">{photo.originalName}</p>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] text-white/50 uppercase font-mono">{photo.category}</span>
-                          <span className="flex items-center gap-1 text-[10px] py-0.5 px-2 bg-blue-500/20 text-blue-400 rounded-full border border-blue-500/30">
-                            v{photo.version}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    {/* Compact Card Actions */}
-                    <div className="p-3 grid grid-cols-2 gap-2">
-                       <button 
-                        onClick={(e) => { e.stopPropagation(); handleEnhance(photo.id); }}
-                        className="flex items-center justify-center gap-1 text-[10px] bg-white/5 hover:bg-white/10 py-2 rounded-lg border border-white/5 transition-all"
-                       >
-                         <Shield className="w-3 h-3 text-blue-400" />
-                         <span>Enhance</span>
-                       </button>
-                       <button 
-                        onClick={(e) => { e.stopPropagation(); handleRemoveBg(photo.id); }}
-                        className="flex items-center justify-center gap-1 text-[10px] bg-white/5 hover:bg-white/10 py-2 rounded-lg border border-white/5 transition-all"
-                       >
-                         <Maximize2 className="w-3 h-3 text-purple-400" />
-                         <span>Clear BG</span>
-                       </button>
-                    </div>
-                  </motion.div>
-                ))}
+                <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={handleFileUpload} />
               </div>
-            )}
-          </AnimatePresence>
-        </section>
-
-        {/* Right Detail Pane (History & Metadata) */}
-        {selectedPhoto && (
-          <aside className="w-80 border-l border-white/5 bg-white/2 backdrop-blur-md p-6 overflow-y-auto custom-scrollbar">
-            <h3 className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-6 flex items-center gap-2">
-              <List className="w-3 h-3" />
-              Photo Details
-            </h3>
-            
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] text-white/40 uppercase tracking-widest">Category</label>
-                <select 
-                  value={selectedPhoto.category}
-                  onChange={(e) => updatePhoto(selectedPhoto.id, { category: e.target.value })}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500 appearance-none"
+            </motion.div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {filteredPhotos.map((photo) => (
+                <motion.div
+                  key={photo.id}
+                  layout
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className={cn(
+                    "group ios-card relative transition-all active:scale-[0.97]",
+                    selectedPhotoId === photo.id && "ring-2 ring-ios-blue ring-offset-4 ring-offset-[var(--bg-primary)]"
+                  )}
+                  onClick={() => setSelectedPhotoId(photo.id)}
                 >
-                  <option value="Uncategorized">Uncategorized</option>
-                  <option value="Work">Professional</option>
-                  <option value="Visa">Visa / Identity</option>
-                  <option value="Personal">Personal</option>
-                </select>
-              </div>
+                  <div className="aspect-[3/4] overflow-hidden relative">
+                    <img 
+                      src={photo.processedUrl || photo.blobUrl} 
+                      alt="Portrait" 
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                    />
+                    
+                    {/* Action Overlay */}
+                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-start justify-end p-2 gap-1">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); startCrop(photo.id); }}
+                        className="p-2 bg-white/90 backdrop-blur-md rounded-lg text-black hover:bg-white transition-all shadow-lg"
+                      >
+                        <Crop className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); deletePhoto(photo.id); }}
+                        className="p-2 bg-white/90 backdrop-blur-md rounded-lg text-ios-red hover:bg-ios-red hover:text-white transition-all shadow-lg"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] text-white/40 uppercase tracking-widest">Tags</label>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {selectedPhoto.tags.map(tag => (
-                    <span key={tag} className="px-2 py-1 bg-white/5 border border-white/10 rounded flex items-center gap-1 text-[10px]">
-                      {tag}
-                      <button onClick={() => updatePhoto(selectedPhoto.id, { tags: selectedPhoto.tags.filter(t => t !== tag) })}><Trash2 className="w-2 h-2" /></button>
-                    </span>
-                  ))}
-                </div>
-                <input 
-                  type="text"
-                  placeholder="Press enter to add..."
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      const val = e.currentTarget.value.trim();
-                      if (val && !selectedPhoto.tags.includes(val)) {
-                        updatePhoto(selectedPhoto.id, { tags: [...selectedPhoto.tags, val] });
-                        e.currentTarget.value = '';
-                      }
-                    }
-                  }}
-                />
-              </div>
-
-              <div className="space-y-3">
-                <h4 className="text-[10px] text-white/40 uppercase tracking-widest">Version History</h4>
-                {selectedPhoto.history.length === 0 ? (
-                  <p className="text-[10px] text-white/20 italic">No previous versions.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {selectedPhoto.history.map((h, i) => (
-                      <div key={i} className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/5 hover:border-white/20 transition-all cursor-pointer" onClick={() => updatePhoto(selectedPhoto.id, { processedUrl: h.url })}>
-                        <div className="flex items-center gap-3">
-                          <History className="w-4 h-4 text-white/40" />
-                          <div>
-                            <p className="text-xs">{h.label}</p>
-                            <p className="text-[8px] text-white/40">{new Date(h.date).toLocaleDateString()}</p>
-                          </div>
-                        </div>
-                        <button className="text-blue-400 hover:text-blue-300 transition-colors">
-                          <RefreshCw className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
+                    {/* Progress Badge */}
+                    <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/40 backdrop-blur-md rounded-md text-[9px] font-bold text-white uppercase tracking-wider">
+                      v{photo.version}
+                    </div>
                   </div>
-                )}
-              </div>
+                  
+                  <div className="p-3 bg-[var(--bg-secondary)]">
+                    <div className="flex items-center justify-between mb-2">
+                       <span className="text-[10px] font-bold text-ios-blue leading-none">AI READY</span>
+                       <CheckCircle2 className="w-3 h-3 text-ios-green" />
+                    </div>
+                    <p className="text-[11px] font-semibold truncate text-[var(--text-secondary)] opacity-80">{photo.originalName}</p>
+                  </div>
+                </motion.div>
+              ))}
+              
+              {/* Add More Cell */}
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="ios-card aspect-[3/4] flex flex-col items-center justify-center gap-2 border-dashed border-2 border-[var(--separator)] bg-transparent hover:bg-[var(--bg-secondary)] transition-all group"
+              >
+                <div className="w-10 h-10 rounded-full bg-ios-blue/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Plus className="w-5 h-5 text-ios-blue" />
+                </div>
+                <span className="text-[10px] font-bold text-ios-blue uppercase tracking-widest">Add More</span>
+              </button>
             </div>
-          </aside>
-        )}
+          )}
+        </AnimatePresence>
       </main>
 
-      {/* Crop Modal */}
+      {/* Floating Action Menu (iOS Inspired) */}
       <AnimatePresence>
-        {isCropping && selectedPhoto && (
+        {photos.length > 0 && (
           <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-8"
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[95%] max-w-lg"
           >
-            <div className="bg-[#0a0a0a] border border-white/10 rounded-3xl overflow-hidden max-w-4xl w-full flex flex-col max-h-screen">
-              <div className="p-6 border-b border-white/5 flex items-center justify-between">
-                <h2 className="text-xl font-bold flex items-center gap-3">
-                  <Crop className="text-blue-500" />
-                  Crop Selection
-                </h2>
-                <button onClick={() => setIsCropping(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
-                  <Trash2 className="w-5 h-5 text-white/40" />
-                </button>
+            <div className="ios-glass p-4 rounded-[2.5rem] shadow-2xl flex items-center justify-between gap-4 border border-white/20">
+              <div className="flex items-center gap-4 pl-2">
+                <div className="flex flex-col">
+                  <span className="text-[10px] uppercase tracking-widest font-bold text-ios-blue leading-none mb-1">Print Batch</span>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => setTotalCopies(Math.max(1, totalCopies - 1))}
+                      className="w-6 h-6 rounded-lg bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-primary)] active:scale-95"
+                    >
+                      -
+                    </button>
+                    <span className="text-xl font-bold min-w-[1.5rem] text-center">{totalCopies}</span>
+                    <button 
+                      onClick={() => setTotalCopies(totalCopies + 1)}
+                      className="w-6 h-6 rounded-lg bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-primary)] active:scale-95"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
               </div>
               
-              <div className="flex-1 overflow-hidden p-6 bg-black">
-                <Cropper
-                  src={selectedPhoto.blobUrl}
-                  style={{ height: '100%', width: '100%' }}
-                  aspectRatio={prefs.defaultWidth / prefs.defaultHeight}
-                  guides={true}
-                  ref={cropperRef}
-                />
-              </div>
-
-              <div className="p-6 border-t border-white/5 flex justify-end gap-3 bg-black/50">
+              <div className="flex items-center gap-2">
                 <button 
-                  onClick={() => setIsCropping(false)}
-                  className="px-6 py-2 rounded-xl text-white/60 hover:text-white transition-colors"
+                  onClick={() => setIsPreviewing(true)}
+                  className="w-14 h-14 rounded-full bg-[var(--bg-secondary)] border border-[var(--separator)] flex items-center justify-center shadow-lg active:scale-95 transition-all text-[var(--text-primary)]"
                 >
-                  Cancel
+                  <LayoutGrid className="w-6 h-6" />
                 </button>
                 <button 
-                  onClick={applyCrop}
-                  className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all"
+                  onClick={generatePDF}
+                  disabled={isProcessing}
+                  className="h-14 px-6 rounded-full bg-ios-blue text-white font-bold flex items-center gap-3 shadow-lg shadow-ios-blue/30 active:scale-95 transition-all disabled:opacity-50"
                 >
-                  Save Version
+                  {isProcessing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                  <span>Generate Sheet</span>
                 </button>
               </div>
             </div>
@@ -637,53 +553,193 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Preview Modal */}
+      {/* Camera View Modal */}
       <AnimatePresence>
-        {isPreviewing && (
+        {isCameraActive && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[150] bg-black/95 backdrop-blur-xl flex items-center justify-center p-8"
+            className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center"
           >
-            <div className="bg-[#0a0a0a] border border-white/10 rounded-3xl overflow-hidden max-w-5xl w-full h-[90vh] flex flex-col shadow-2xl shadow-blue-500/10">
-              <div className="p-6 border-b border-white/5 flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-bold flex items-center gap-3">
-                    <FileText className="text-blue-500" />
-                    Print Sheet Preview
-                  </h2>
-                  <p className="text-[10px] text-white/40 uppercase tracking-widest mt-1">
-                    {totalCopies} Photos • {totalPages} {totalPages === 1 ? 'Page' : 'Pages'} • Optimized for A4 Printing
-                  </p>
+            <div className="absolute top-6 inset-x-0 px-6 flex items-center justify-between z-10">
+               <button onClick={stopCamera} className="p-3 rounded-full bg-white/10 backdrop-blur-md text-white">
+                 <X className="w-6 h-6" />
+               </button>
+               <div className="px-4 py-2 rounded-full bg-white/10 backdrop-blur-md text-white text-xs font-bold uppercase tracking-widest">
+                 Live Capture
+               </div>
+               <div className="w-12 h-12" /> {/* Spacer */}
+            </div>
+            
+            <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+               <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline 
+                className="w-full h-full object-cover md:rounded-3xl md:h-[80%] md:w-auto md:aspect-video" 
+               />
+               <canvas ref={canvasRef} className="hidden" />
+               
+               {/* Guides Overlay */}
+               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                 <div className="w-[280px] h-[360px] border-2 border-white/30 rounded-3xl relative">
+                    <div className="absolute top-1/4 inset-x-0 h-px bg-white/20" />
+                    <div className="absolute top-1/2 inset-x-0 h-px bg-white/20" />
+                    <div className="absolute bottom-1/4 inset-x-0 h-px bg-white/20" />
+                 </div>
+               </div>
+            </div>
+
+            <div className="absolute bottom-12 inset-x-0 flex flex-col items-center gap-8">
+               <div className="text-white/60 text-xs font-medium px-8 text-center max-w-xs">
+                 Position your face within the frame and ensure even lighting.
+               </div>
+               <button 
+                onClick={capturePhoto}
+                className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center active:scale-90 transition-transform"
+               >
+                 <div className="w-16 h-16 rounded-full bg-white transition-all hover:bg-white/90" />
+               </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Crop Modal Refinement */}
+      <AnimatePresence>
+        {isCropping && selectedPhoto && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 1.1 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.1 }}
+            className="fixed inset-0 z-[100] ios-glass flex items-center justify-center p-4"
+          >
+            <div className="bg-[var(--bg-secondary)] rounded-[2.5rem] overflow-hidden max-w-4xl w-full flex flex-col h-[90vh] shadow-2xl border border-[var(--separator)]">
+              <div className="p-6 border-b border-[var(--separator)] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-ios-blue/10 rounded-xl flex items-center justify-center">
+                    <Crop className="text-ios-blue w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">Adjust Composition</h2>
+                    <p className="text-[10px] text-[var(--text-tertiary)] uppercase font-bold tracking-widest">{selectedPhoto.width}x{selectedPhoto.height} mm Portrait</p>
+                  </div>
                 </div>
-                <button onClick={() => setIsPreviewing(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
-                  <Trash2 className="w-5 h-5 text-white/40" />
+                <button onClick={() => setIsCropping(false)} className="p-2 hover:bg-[var(--bg-primary)] rounded-full transition-colors">
+                  <X className="w-6 h-6 text-[var(--text-tertiary)]" />
                 </button>
               </div>
+              
+              <div className="flex-1 overflow-hidden p-6 bg-black flex items-center justify-center">
+                <div className="w-full h-full max-h-[60vh]">
+                  <Cropper
+                    src={selectedPhoto.blobUrl}
+                    style={{ height: '100%', width: '100%' }}
+                    aspectRatio={prefs.defaultWidth / prefs.defaultHeight}
+                    guides={true}
+                    ref={cropperRef}
+                    background={false}
+                    autoCropArea={0.8}
+                    viewMode={1}
+                  />
+                </div>
+              </div>
 
-              <div className="flex-1 overflow-y-auto p-12 bg-black/40 flex flex-col items-center gap-8 custom-scrollbar">
+              <div className="p-8 border-t border-[var(--separator)] bg-[var(--bg-secondary)] flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="text-[var(--text-tertiary)] text-xs max-w-xs text-center md:text-left">
+                  Use the handles to frame the head and shoulders correctly for passport standards.
+                </div>
+                <div className="flex gap-3 w-full md:w-auto">
+                  <button 
+                    onClick={() => setIsCropping(false)}
+                    className="ios-button-secondary flex-1 md:flex-none"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={applyCrop}
+                    className="ios-button-primary flex-1 md:flex-none"
+                  >
+                    Apply Crop
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Preview Modal Refinement */}
+      <AnimatePresence>
+        {isPreviewing && (
+          <motion.div 
+            initial={{ opacity: 0, y: 100 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 100 }}
+            className="fixed inset-0 z-[150] bg-[var(--bg-primary)] flex flex-col scroll-smooth overflow-y-auto no-scrollbar"
+          >
+            <nav className="sticky top-0 z-50 ios-glass px-6 py-4 flex items-center justify-between">
+               <button onClick={() => setIsPreviewing(false)} className="flex items-center gap-2 text-ios-blue font-semibold">
+                 <X className="w-5 h-5" />
+                 <span>Close</span>
+               </button>
+               <div className="text-center">
+                 <h2 className="text-sm font-bold">Print Sheet Preview</h2>
+                 <p className="text-[10px] text-[var(--text-tertiary)] uppercase font-bold tracking-widest">{totalPages}x A4 PDF Documents</p>
+               </div>
+               <button 
+                onClick={() => { setIsPreviewing(false); generatePDF(); }}
+                className="ios-button-primary !py-2 !px-4"
+               >
+                 <Download className="w-4 h-4" />
+                 <span>Save PDF</span>
+               </button>
+            </nav>
+
+            <div className="flex-1 p-8 pb-20 flex flex-col items-center gap-12 max-w-4xl mx-auto w-full">
+                {/* Configuration HUD */}
+                <div className="w-full grid grid-cols-2 md:grid-cols-4 gap-4">
+                   <div className="ios-card p-4 flex flex-col">
+                      <span className="text-[9px] text-[var(--text-tertiary)] uppercase font-bold tracking-widest mb-1">Dimensions</span>
+                      <span className="text-sm font-bold">{prefs.defaultWidth}x{prefs.defaultHeight}mm</span>
+                   </div>
+                   <div className="ios-card p-4 flex flex-col">
+                      <span className="text-[9px] text-[var(--text-tertiary)] uppercase font-bold tracking-widest mb-1">Grid Pattern</span>
+                      <span className="text-sm font-bold">{cols}x{rowsPerPage} Grid</span>
+                   </div>
+                   <div className="ios-card p-4 flex flex-col">
+                      <span className="text-[9px] text-[var(--text-tertiary)] uppercase font-bold tracking-widest mb-1">Total Photos</span>
+                      <span className="text-sm font-bold">{totalCopies} Copies</span>
+                   </div>
+                   <div className="ios-card p-4 flex flex-col">
+                      <span className="text-[9px] text-[var(--text-tertiary)] uppercase font-bold tracking-widest mb-1">Export Scale</span>
+                      <span className="text-sm font-bold text-ios-green">300 DPI (Ultra)</span>
+                   </div>
+                </div>
+
                 {Array.from({ length: totalPages }).map((_, pageIdx) => {
                   const itemsOnThisPageCount = Math.min(perPage, totalCopies - (pageIdx * perPage));
                   
                   return (
-                    <div 
+                    <motion.div 
                       key={pageIdx}
-                      className="bg-white shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-black/10 relative overflow-hidden flex flex-col items-center"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      whileInView={{ opacity: 1, scale: 1 }}
+                      viewport={{ once: true }}
+                      className="bg-white shadow-2xl relative overflow-hidden flex flex-col items-center border border-black/5"
                       style={{ 
                         width: '210mm', 
                         height: '297mm', 
                         padding: `${prefs.margin}mm`,
-                        transform: 'scale(0.8)', // Scale down for viewable screen size
-                        transformOrigin: 'top center',
-                        marginBottom: '-50mm' // Adjust for scale overlap
+                        transform: 'scale(auto)',
+                        maxWidth: '100%'
                       }}
                     >
-                      <div className="absolute top-2 right-2 text-[8px] text-black/20 font-bold uppercase tracking-widest">
-                        Page {pageIdx + 1} of {totalPages}
+                      <div className="absolute top-4 right-6 text-[10px] text-black/10 font-bold uppercase tracking-[0.3em]">
+                        Sheet Asset • {pageIdx + 1} / {totalPages}
                       </div>
                       
-                      {/* Simulating Grid Rendering matching Server Logic */}
                       <div 
                         className="w-full h-full flex flex-wrap content-start items-start justify-center"
                         style={{ gap: `${prefs.spacing}mm` }}
@@ -695,7 +751,7 @@ export default function App() {
                           return (
                             <div 
                               key={itemIdx}
-                              className="bg-gray-100 border border-gray-200 overflow-hidden"
+                              className="bg-gray-100 border border-gray-100 overflow-hidden shadow-sm"
                               style={{ 
                                 width: `${prefs.defaultWidth}mm`, 
                                 height: `${prefs.defaultHeight}mm`,
@@ -705,57 +761,180 @@ export default function App() {
                             >
                               <img 
                                 src={photoToUse?.processedUrl || photoToUse?.blobUrl} 
-                                className="w-full h-full object-cover grayscale opacity-80" 
+                                className="w-full h-full object-cover transition-all" 
                                 alt="preview"
                               />
                             </div>
                           );
                         })}
                       </div>
-                    </div>
+                    </motion.div>
                   );
                 })}
-              </div>
-
-              <div className="p-6 border-t border-white/5 flex justify-end gap-3 bg-black/50 backdrop-blur-md">
-                <button 
-                  onClick={() => setIsPreviewing(false)}
-                  className="px-6 py-2 rounded-xl text-white/60 hover:text-white transition-colors"
-                >
-                  Back to Editor
-                </button>
-                <button 
-                  onClick={() => { setIsPreviewing(false); generatePDF(); }}
-                  className="px-8 py-3 bg-white text-black rounded-xl font-bold hover:scale-105 transition-all flex items-center gap-2"
-                >
-                  <Download className="w-5 h-5" />
-                  <span>Accept & Download PDF</span>
-                </button>
-              </div>
             </div>
+
+            {/* Bottom Safe Area Padding */}
+            <div className="h-24 w-full" />
           </motion.div>
         )}
       </AnimatePresence>
+      {/* Processing Loader Refinement */}
       <AnimatePresence>
         {isProcessing && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] bg-blue-600/10 backdrop-blur-md flex flex-col items-center justify-center"
+            className="fixed inset-0 z-[200] ios-glass flex flex-col items-center justify-center p-8 text-center"
           >
-            <div className="relative">
-              <div className="w-20 h-20 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
-              <Zap className="absolute inset-0 m-auto w-8 h-8 text-blue-500 animate-pulse" fill="currentColor" />
+            <div className="relative mb-8">
+              <motion.div 
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                className="w-24 h-24 border-[6px] border-ios-blue/10 border-t-ios-blue rounded-full" 
+              />
+              <motion.div
+                animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="absolute inset-0 flex items-center justify-center"
+              >
+                <Zap className="w-10 h-10 text-ios-blue" fill="currentColor" />
+              </motion.div>
             </div>
-            <p className="mt-6 text-sm font-medium tracking-[0.2em] text-blue-400 uppercase animate-pulse">Running AI Microservices</p>
-            <div className="mt-2 w-48 h-1 bg-white/5 rounded-full overflow-hidden">
+            
+            <h3 className="text-xl font-bold mb-2">Architecting Your Sheet</h3>
+            <p className="text-sm text-[var(--text-tertiary)] max-w-[200px] font-medium leading-relaxed uppercase tracking-widest">
+              AI Microservices performing high-res restoration
+            </p>
+            
+            <div className="mt-8 w-64 h-1.5 bg-[var(--separator)] rounded-full overflow-hidden">
                <motion.div 
-                className="h-full bg-blue-500" 
+                className="h-full bg-ios-blue" 
                 initial={{ width: "0%" }}
                 animate={{ width: "100%" }}
-                transition={{ duration: 2, repeat: Infinity }}
+                transition={{ duration: 3, repeat: Infinity }}
                />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Selection / Details Drawer (iOS Inspired) */}
+      <AnimatePresence>
+        {selectedPhoto && !isCropping && !isCameraActive && !isPreviewing && (
+          <motion.div 
+            initial={{ x: 400 }}
+            animate={{ x: 0 }}
+            exit={{ x: 400 }}
+            className="fixed top-24 bottom-24 right-4 z-30 w-[calc(100%-2rem)] md:w-96 ios-glass rounded-[2rem] shadow-2xl border border-white/20 p-6 flex flex-col pointer-events-auto"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold">Metadata</h3>
+              <button 
+                onClick={() => setSelectedPhotoId(null)}
+                className="p-2 bg-[var(--bg-primary)] rounded-full text-[var(--text-tertiary)]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto no-scrollbar space-y-6">
+              {/* Quick Actions */}
+              <div className="grid grid-cols-2 gap-3">
+                <button 
+                  onClick={() => handleEnhance(selectedPhoto.id)}
+                  className="ios-button-secondary !py-4 flex-col gap-2"
+                >
+                  <Zap className="w-6 h-6 text-ios-blue" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">AI Restore</span>
+                </button>
+                <button 
+                  onClick={() => handleRemoveBg(selectedPhoto.id)}
+                  className="ios-button-secondary !py-4 flex-col gap-2"
+                >
+                  <Filter className="w-6 h-6 text-ios-green" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Clean BG</span>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="ios-card p-4 space-y-3">
+                  <label className="text-[10px] text-[var(--text-tertiary)] uppercase font-bold tracking-widest block">Collection / Category</label>
+                  <select 
+                    value={selectedPhoto.category}
+                    onChange={(e) => updatePhoto(selectedPhoto.id, { category: e.target.value })}
+                    className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue appearance-none"
+                  >
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+
+                <div className="ios-card p-4 space-y-3">
+                  <label className="text-[10px] text-[var(--text-tertiary)] uppercase font-bold tracking-widest block">Associated Tags</label>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedPhoto.tags.map(tag => (
+                      <span key={tag} className="px-3 py-1 bg-ios-blue/10 text-ios-blue rounded-full text-[10px] font-bold flex items-center gap-1">
+                        {tag}
+                        <X className="w-3 h-3 cursor-pointer" onClick={() => updatePhoto(selectedPhoto.id, { tags: selectedPhoto.tags.filter(t => t !== tag) })} />
+                      </span>
+                    ))}
+                  </div>
+                  <input 
+                    type="text" 
+                    placeholder="Add tag..."
+                    className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-xl p-3 text-sm focus:outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const val = e.currentTarget.value.trim();
+                        if (val) {
+                          updatePhoto(selectedPhoto.id, { tags: [...selectedPhoto.tags, val] });
+                          e.currentTarget.value = '';
+                        }
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="space-y-3">
+                   <h4 className="text-[10px] text-[var(--text-tertiary)] uppercase font-bold tracking-widest px-1">Processing History</h4>
+                   <div className="space-y-2">
+                     {selectedPhoto.history.length === 0 ? (
+                       <div className="ios-card p-4 text-center text-[10px] text-[var(--text-tertiary)] italic">No revisions yet</div>
+                     ) : (
+                       selectedPhoto.history.map((h, i) => (
+                         <div 
+                          key={i} 
+                          onClick={() => updatePhoto(selectedPhoto.id, { processedUrl: h.url })}
+                          className="ios-card p-3 flex items-center justify-between hover:bg-[var(--bg-primary)] cursor-pointer group"
+                         >
+                           <div className="flex items-center gap-3">
+                             <History className="w-4 h-4 text-ios-blue opacity-40 group-hover:opacity-100 transition-opacity" />
+                             <div>
+                               <p className="text-xs font-bold">{h.label}</p>
+                               <p className="text-[9px] text-[var(--text-tertiary)]">{new Date(h.date).toLocaleTimeString()}</p>
+                             </div>
+                           </div>
+                           <ChevronRight className="w-4 h-4 text-[var(--text-tertiary)]" />
+                         </div>
+                       ))
+                     )}
+                   </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-2">
+               <button 
+                onClick={() => startCrop(selectedPhoto.id)}
+                className="flex-1 ios-button-secondary"
+               >
+                 Re-Crop
+               </button>
+               <button 
+                onClick={() => deletePhoto(selectedPhoto.id)}
+                className="ios-button-secondary !text-ios-red !border-ios-red/20 !bg-ios-red/5"
+               >
+                 <Trash2 className="w-5 h-5" />
+               </button>
             </div>
           </motion.div>
         )}

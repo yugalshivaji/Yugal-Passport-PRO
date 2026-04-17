@@ -1,1 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=SF+Pro+Display:wght@400;600;700&display=swap');
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+  
+  --color-ios-blue: #007AFF;
+  --color-ios-red: #FF3B30;
+  --color-ios-green: #34C759;
+}
+
+@layer base {
+  :root {
+    --bg-primary: #F2F2F7;
+    --bg-secondary: #FFFFFF;
+    --glass-bg: rgba(255, 255, 255, 0.7);
+    --glass-border: rgba(0, 0, 0, 0.05);
+    --text-primary: #000000;
+    --text-secondary: #3C3C43;
+    --text-tertiary: rgba(60, 60, 67, 0.6);
+    --accent: #007AFF;
+    --separator: rgba(60, 60, 67, 0.12);
+  }
+
+  .dark {
+    --bg-primary: #000000;
+    --bg-secondary: #1C1C1E;
+    --glass-bg: rgba(28, 28, 30, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --text-primary: #FFFFFF;
+    --text-secondary: #EBEBF5;
+    --text-tertiary: rgba(235, 235, 245, 0.6);
+    --separator: rgba(84, 84, 88, 0.65);
+  }
+
+  body {
+    @apply bg-[var(--bg-primary)] text-[var(--text-primary)] antialiased transition-colors duration-300;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+@layer components {
+  .ios-glass {
+    @apply backdrop-blur-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)] transition-all;
+  }
+  
+  .ios-card {
+    @apply bg-[var(--bg-secondary)] rounded-2xl shadow-sm border border-[var(--separator)] overflow-hidden;
+  }
+
+  .ios-button {
+    @apply flex items-center justify-center gap-2 font-semibold rounded-xl px-4 py-3 active:scale-[0.98] transition-all;
+  }
+
+  .ios-button-primary {
+    @apply flex items-center justify-center gap-2 font-semibold rounded-xl px-4 py-3 active:scale-[0.98] transition-all bg-ios-blue text-white shadow-lg shadow-ios-blue/20 hover:brightness-110;
+  }
+
+  .ios-button-secondary {
+    @apply flex items-center justify-center gap-2 font-semibold rounded-xl px-4 py-3 active:scale-[0.98] transition-all bg-[var(--bg-secondary)] text-ios-blue border border-[var(--separator)];
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-black/10 dark:bg-white/10 rounded-full;
+  }
+}
