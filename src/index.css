@@ -40,26 +40,6 @@
 }
 
 @layer components {
-  .ios-glass {
-    @apply backdrop-blur-2xl bg-[var(--glass-bg)] border border-[var(--glass-border)] transition-all;
-  }
-  
-  .ios-card {
-    @apply bg-[var(--bg-secondary)] rounded-2xl shadow-sm border border-[var(--separator)] overflow-hidden;
-  }
-
-  .ios-button {
-    @apply flex items-center justify-center gap-2 font-semibold rounded-xl px-4 py-3 active:scale-[0.98] transition-all;
-  }
-
-  .ios-button-primary {
-    @apply flex items-center justify-center gap-2 font-semibold rounded-xl px-4 py-3 active:scale-[0.98] transition-all bg-ios-blue text-white shadow-lg shadow-ios-blue/20 hover:brightness-110;
-  }
-
-  .ios-button-secondary {
-    @apply flex items-center justify-center gap-2 font-semibold rounded-xl px-4 py-3 active:scale-[0.98] transition-all bg-[var(--bg-secondary)] text-ios-blue border border-[var(--separator)];
-  }
-
   /* Custom scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
@@ -70,5 +50,17 @@
   }
   ::-webkit-scrollbar-thumb {
     @apply bg-black/10 dark:bg-white/10 rounded-full;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }

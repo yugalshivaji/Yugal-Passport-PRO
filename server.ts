@@ -167,6 +167,13 @@ app.post('/api/remove-bg', upload.single('image'), async (req: any, res) => {
     const file = req.file;
     if (!file) return res.status(400).json({ error: 'No image provided' });
 
+    const userKey = req.headers['x-user-api-key'];
+    const apiKey = userKey || process.env.REMOVE_BG_API_KEY;
+
+    if (!apiKey) {
+      return res.status(400).json({ error: 'API key missing', code: 'LIMIT_REACHED' });
+    }
+
     const response = await axios.post(
       'https://api.remove.bg/v1.0/removebg',
       {
@@ -175,7 +182,7 @@ app.post('/api/remove-bg', upload.single('image'), async (req: any, res) => {
       },
       {
         headers: {
-          'X-Api-Key': process.env.REMOVE_BG_API_KEY,
+          'X-Api-Key': apiKey,
         },
         responseType: 'arraybuffer'
       }
@@ -183,10 +190,19 @@ app.post('/api/remove-bg', upload.single('image'), async (req: any, res) => {
 
     res.set('Content-Type', 'image/png');
     res.send(response.data);
-  } catch (error) {
-    console.error('Background removal error:', error);
-    res.status(500).json({ error: 'Failed to remove background' });
+  } catch (error: any) {
+    console.error('Background removal error:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ 
+      error: 'Failed to remove background', 
+      details: error.response?.data?.toString() || error.message 
+    });
   }
+});
+
+// Fallback for API routes to prevent landing on HTML
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
 });
 
 // --- VITE SETUP ---
