@@ -8,12 +8,11 @@ export default defineConfig(({mode}) => {
   return {
     plugins: [react(), tailwindcss()],
     build: {
-      modulePreload: {
-        polyfill: false,
-      },
+      modulePreload: false,
     },
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      'global': 'globalThis',
     },
     resolve: {
       alias: {
