@@ -321,7 +321,7 @@ export default function App() {
     }
   };
 
-  const categories = ['All', ...Array.from(new Set(photos.map(p => p.category)))];
+  const categories = ['All', ...Array.from(new Set(photos.map(p => p.category))).filter(c => c !== 'All')];
   const filteredPhotos = photos.filter(p => {
     const matchesSearch = p.originalName.toLowerCase().includes(searchTerm.toLowerCase()) || p.tags.some(t => t.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCategory = filterCategory === 'All' || p.category === filterCategory;
@@ -885,7 +885,7 @@ export default function App() {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         const val = e.currentTarget.value.trim();
-                        if (val) {
+                        if (val && !selectedPhoto.tags.includes(val)) {
                           updatePhoto(selectedPhoto.id, { tags: [...selectedPhoto.tags, val] });
                           e.currentTarget.value = '';
                         }
