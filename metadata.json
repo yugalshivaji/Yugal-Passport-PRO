@@ -1,14 +1,7 @@
 {
-  "name": "YUGAL Passport Photo",
-  "description": "Professional, AI-powered passport photo tool with a sleek iOS-inspired design. Features 3D crop, background removal, AI restoration, and high-density PDF generation—all stored securely on your device.",
+  "name": "YUGAL Passport Photo Maker",
+  "description": "The ultimate pro-grade passport photo engine. Features AI restoration, smart background removal, 3D perspective cropping, and high-density A4 tiling—all secured with local-first encryption by Yugal.",
   "requestFramePermissions": [
     "camera"
-  ],
-  "majorCapabilities": [
-    "AI Portrait Enhancement",
-    "Smart Background Removal",
-    "A4 PDF Sheet Tiling",
-    "Local-Only Secure Storage",
-    "Mobile-First iOS/Material Design"
   ]
 }

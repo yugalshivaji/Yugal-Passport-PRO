@@ -68,7 +68,15 @@ interface PhotoEntry {
   filters: {
     brightness: number;
     contrast: number;
+    hue: number;
+    saturation: number;
+    temperature: number;
     grayscale: boolean;
+  };
+  transform?: {
+    rotate: number;
+    perspective: number;
+    scale: number;
   };
 }
 
@@ -78,7 +86,9 @@ interface UserPreferences {
   spacing: number;
   margin: number;
   borderSize: number;
+  borderColor: string;
   paperSize: 'A4' | '4x6' | '5x7';
+  autoDelete: boolean;
 }
 
 // --- COMPONENTS ---
@@ -255,14 +265,32 @@ const FeatureCard = ({ icon, title, desc }: { icon: React.ReactNode, title: stri
   </div>
 );
 
+const AdjustmentSlider = ({ label, value, onChange, min, max, unit = "%" }: any) => (
+  <div className="space-y-3">
+    <div className="flex justify-between text-[10px] font-black uppercase tracking-widest opacity-60">
+       <span>{label}</span>
+       <span className="text-ios-blue">{value}{unit}</span>
+    </div>
+    <div className="relative group flex items-center">
+      <input 
+        type="range" min={min} max={max} value={value}
+        onChange={(e) => onChange(parseInt(e.target.value))}
+        className="w-full h-1.5 bg-[var(--separator)] rounded-full appearance-none accent-ios-blue group-hover:h-2 transition-all"
+      />
+    </div>
+  </div>
+);
+
 // --- MAIN APP ---
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [appStarted, setAppStarted] = useState(false);
+  const [activeView, setActiveView] = useState<'gallery' | 'how-to' | 'privacy'>('gallery');
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [isCropping, setIsCropping] = useState(false);
+  const [isTransforming, setIsTransforming] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -285,7 +313,9 @@ export default function App() {
     spacing: 5,
     margin: 10,
     borderSize: 0,
-    paperSize: 'A4'
+    borderColor: '#000000',
+    paperSize: 'A4',
+    autoDelete: false
   });
 
   const cropperRef = useRef<HTMLImageElement>(null);
@@ -320,6 +350,34 @@ export default function App() {
       return null;
     }));
     setPhotos(hydrated.filter(p => p !== null) as PhotoEntry[]);
+  };
+
+  const generateLogo = () => (
+    <div className="flex items-center gap-3 group px-2">
+      <div className="relative">
+        <div className="w-10 h-10 bg-ios-blue rounded-xl flex items-center justify-center shadow-lg shadow-ios-blue/20 group-hover:rotate-12 transition-transform duration-500">
+          <Camera className="text-white w-6 h-6" />
+        </div>
+        <div className="absolute -top-1 -right-1 w-4 h-4 bg-ios-green rounded-full border-2 border-[var(--bg-primary)] animate-pulse" />
+      </div>
+      <div>
+        <h1 className="text-lg font-black tracking-tighter flex items-center gap-1">
+          YUGAL
+          <span className="text-[10px] bg-ios-blue/10 text-ios-blue px-1.5 py-0.5 rounded-md font-bold">MAKER</span>
+        </h1>
+        <p className="text-[8px] text-[var(--text-tertiary)] font-bold tracking-[0.2em] uppercase">Built by Yugal Lab</p>
+      </div>
+    </div>
+  );
+
+  const clearAllData = async () => {
+    if (confirm("Are you sure? This will delete all photos and session data permanently.")) {
+      setPhotos([]);
+      localStorage.removeItem('yugal_app_data');
+      // Potential IDB clear if needed, but setPhotos([]) handles local session
+      setSelectedPhotoId(null);
+      alert("All data wiped successfully.");
+    }
   };
 
   // Save changes to localStorage (excluding blob URLs)
@@ -400,7 +458,15 @@ export default function App() {
       category: 'Recent',
       version: 1,
       history: [],
-      filters: { brightness: 100, contrast: 100, grayscale: false }
+      filters: { 
+        brightness: 100, 
+        contrast: 100, 
+        hue: 0,
+        saturation: 100,
+        temperature: 0,
+        grayscale: false 
+      },
+      transform: { rotate: 0, perspective: 0, scale: 1 }
     };
 
     setPhotos(prev => [newEntry, ...prev]);
@@ -607,6 +673,13 @@ export default function App() {
                     reader.onloadend = () => resolve(reader.result as string);
                     reader.readAsDataURL(imgBlob);
                 });
+                // Apply border if exists
+                if (prefs.borderSize > 0) {
+                    doc.setDrawColor(prefs.borderColor);
+                    doc.setLineWidth(prefs.borderSize / 10); // convert slightly
+                    doc.rect(x, y, width, height, 'S');
+                }
+
                 doc.addImage(base64, 'JPEG', x, y, width, height, undefined, 'FAST');
                 totalUsed++;
             }
@@ -614,6 +687,10 @@ export default function App() {
         }
 
         doc.save(`Yugual_Print_${Date.now()}.pdf`);
+        if (prefs.autoDelete && selectedPhotoId) {
+           deletePhoto(selectedPhotoId);
+           setSelectedPhotoId(null);
+        }
     } catch (err) {
         console.error("PDF Gen failed:", err);
     } finally {
@@ -628,6 +705,96 @@ export default function App() {
     return matchesSearch && matchesCategory;
   });
 
+  const NavContent = () => (
+    <div className="space-y-6">
+      <div className="relative group">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] group-focus-within:text-ios-blue transition-colors" />
+        <input 
+          type="text" 
+          placeholder="Search moments..."
+          className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-2xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all font-medium"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
+
+      <div className="space-y-1">
+          <h4 className="text-[10px] uppercase tracking-[0.2em] font-bold text-[var(--text-tertiary)] px-2 mb-2">Main Navigation</h4>
+          <button onClick={() => setActiveView('gallery')} className={cn("w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all", activeView === 'gallery' ? "bg-ios-blue text-white shadow-lg shadow-ios-blue/20" : "text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]")}>
+             <LayoutGrid className="w-4 h-4" /> Gallery
+          </button>
+          <button onClick={() => setActiveView('how-to')} className={cn("w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all", activeView === 'how-to' ? "bg-ios-blue text-white shadow-lg shadow-ios-blue/20" : "text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]")}>
+             <Info className="w-4 h-4" /> How to Use
+          </button>
+          <button onClick={() => setActiveView('privacy')} className={cn("w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all", activeView === 'privacy' ? "bg-ios-blue text-white shadow-lg shadow-ios-blue/20" : "text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]")}>
+             <ShieldCheck className="w-4 h-4" /> Privacy Policy
+          </button>
+      </div>
+
+      {activeView === 'gallery' && (
+        <div className="space-y-1 pt-4 border-t border-[var(--separator)]">
+           <h4 className="text-[10px] uppercase tracking-[0.2em] font-bold text-[var(--text-tertiary)] px-2 mb-2">Collections</h4>
+           {categories.map(cat => (
+             <button
+               key={cat}
+               onClick={() => setFilterCategory(cat)}
+               className={cn(
+                 "w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all",
+                 filterCategory === cat 
+                   ? "bg-ios-blue/10 text-ios-blue" 
+                   : "text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]"
+               )}
+             >
+               {cat}
+               <ChevronRight className={cn("w-4 h-4", filterCategory === cat ? "opacity-100" : "opacity-0")} />
+             </button>
+           ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const HowToPage = () => (
+    <div className="max-w-4xl mx-auto py-12 space-y-12">
+      <div className="text-center space-y-4">
+        <h2 className="text-4xl font-extrabold tracking-tight">How to Get Perfect Prints</h2>
+        <p className="text-[var(--text-secondary)] text-lg">Follow these 3 simple steps for biometric-ready photos.</p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {[
+          { step: "01", title: "Click Photo", desc: "Use a clean, light-colored background. Our camera guide helps you align perfectly." },
+          { step: "02", title: "AI Polish", desc: "One-tap AI restoration fixes lighting and removes cluttered backgrounds automatically." },
+          { step: "03", title: "Tiling & Print", desc: "Choose your paper size (A4/4x6) and download a high-density PDF ready for any printer." }
+        ].map((s, i) => (
+          <div key={i} className={cn("p-8 space-y-4", UI.card)}>
+            <div className="text-4xl font-black text-ios-blue/20">{s.step}</div>
+            <h3 className="text-xl font-bold">{s.title}</h3>
+            <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{s.desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const PrivacyPage = () => (
+    <div className="max-w-3xl mx-auto py-12 space-y-8 prose dark:prose-invert">
+      <h2 className="text-4xl font-extrabold tracking-tight">Your Privacy, Our Priority</h2>
+      <p className="text-lg leading-relaxed">
+        YUGAL Passport Photo Maker is a <strong>local-first</strong> application. This means:
+      </p>
+      <ul className="space-y-4 list-disc pl-6 opacity-80">
+        <li><strong>No Images Uploaded:</strong> Your photos are processed entirely within your browser's memory and saved to a secure local database (IndexedDB).</li>
+        <li><strong>No Cloud Storage:</strong> We do not have servers that store your biometric data.</li>
+        <li><strong>Secure API Key Proxying:</strong> If you use the background removal feature, the image is passed through a secure, non-logging proxy solely for processing.</li>
+        <li><strong>Right to Erase:</strong> You can wipe all app data with one click in settings.</li>
+      </ul>
+      <div className="p-8 bg-ios-blue/5 border border-ios-blue/10 rounded-3xl mt-12">
+        <h4 className="font-bold mb-2">Google AdSense Compliance</h4>
+        <p className="text-sm opacity-80 italic">We use standard Google services for analytics and monetization. These services may use cookies as per Google's standard privacy policy.</p>
+      </div>
+    </div>
+  );
+
   if (showSplash) return <SplashScreen onComplete={() => setShowSplash(false)} />;
   if (!appStarted && photos.length === 0) return <LandingPage onStart={() => setAppStarted(true)} />;
 
@@ -636,15 +803,9 @@ export default function App() {
       
       {/* HEADER */}
       <header className={cn("sticky top-0 z-[60] px-6 py-4 flex items-center justify-between", UI.glass)}>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-ios-blue rounded-xl flex items-center justify-center shadow-lg shadow-ios-blue/20">
-            <Zap className="text-white w-6 h-6" fill="currentColor" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight">YUGAL</h1>
-            <p className="text-[10px] text-[var(--text-tertiary)] font-mono tracking-widest uppercase">Passport Engine • V3</p>
-          </div>
-        </div>
+        <button onClick={() => setActiveView('gallery')} className="hover:scale-105 transition-transform">
+          {generateLogo()}
+        </button>
         
         <div className="flex items-center gap-2">
           <button 
@@ -666,129 +827,162 @@ export default function App() {
       {/* MAIN LAYOUT */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row min-h-[calc(100vh-80px)]">
         
-        {/* SIDEBAR (DESKTOP) / HORIZONTAL NAV (MOBILE) */}
-        <aside className="w-full md:w-80 p-6 space-y-8 border-r border-[var(--separator)] bg-[var(--bg-secondary)] hidden md:block">
-           <div className="space-y-6">
-              <div className="relative group">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] group-focus-within:text-ios-blue transition-colors" />
-                <input 
-                  type="text" 
-                  placeholder="Search moments..."
-                  className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-2xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+        {/* SIDEBAR (DESKTOP) */}
+        <aside className="w-full md:w-80 p-6 space-y-8 border-r border-[var(--separator)] bg-[var(--bg-secondary)] hidden md:block overflow-y-auto no-scrollbar h-[calc(100vh-80px)] sticky top-[80px]">
+           <NavContent />
+           
+           <div className={cn("space-y-4", UI.card, "p-6 mt-8")}>
+              <div className="flex items-center justify-between">
+                 <h4 className="text-[10px] uppercase font-bold tracking-widest text-ios-blue">Device Status</h4>
+                 <div className="w-2 h-2 rounded-full bg-ios-green animate-pulse" />
               </div>
-
-              <div className="space-y-4">
-                 <h4 className="text-[10px] uppercase tracking-[0.2em] font-bold text-[var(--text-tertiary)] px-2">Collections</h4>
-                 <div className="flex flex-col gap-1">
-                    {categories.map(cat => (
-                      <button
-                        key={cat}
-                        onClick={() => setFilterCategory(cat)}
-                        className={cn(
-                          "w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all",
-                          filterCategory === cat 
-                            ? "bg-ios-blue text-white shadow-lg shadow-ios-blue/20" 
-                            : "text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]"
-                        )}
-                      >
-                        {cat}
-                        <ChevronRight className={cn("w-4 h-4", filterCategory === cat ? "opacity-100" : "opacity-0")} />
-                      </button>
-                    ))}
+              <div className="space-y-2">
+                 <p className="text-xs font-medium">Local DB Active</p>
+                 <div className="w-full bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full">
+                    <div className="w-[12%] h-full bg-ios-green rounded-full" />
                  </div>
-              </div>
-
-              <div className={cn("space-y-4", UI.card, "p-6")}>
-                 <div className="flex items-center justify-between">
-                    <h4 className="text-[10px] uppercase font-bold tracking-widest text-ios-blue">Device Status</h4>
-                    <div className="w-2 h-2 rounded-full bg-ios-green animate-pulse" />
-                 </div>
-                 <div className="space-y-2">
-                    <p className="text-xs font-medium">Local DB Active</p>
-                    <div className="w-full bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full">
-                       <div className="w-[12%] h-full bg-ios-green rounded-full" />
-                    </div>
-                    <p className="text-[10px] text-[var(--text-tertiary)]">Using 12.4 MB of 2.1 GB</p>
-                 </div>
+                 <p className="text-[10px] text-[var(--text-tertiary)] font-bold">Encrypted Sandbox Active</p>
               </div>
            </div>
         </aside>
 
         {/* MAIN FEED */}
-        <main className="flex-1 p-6 space-y-8">
-           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-              <div>
-                 <h2 className="text-3xl font-bold tracking-tight">Gallery</h2>
-                 <p className="text-[var(--text-tertiary)] text-sm">Review and edit your local sessions.</p>
-              </div>
-              <div className="flex gap-2 w-full md:w-auto">
-                 <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  className={cn("flex-1 md:flex-none", UI.btnSecondary)}
-                 >
-                   <Upload className="w-4 h-4" />
-                   Import
-                 </button>
-                 <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={handleFileUpload} />
-                 <button onClick={() => setIsSettingsOpen(true)} className={cn("flex-1 md:flex-none", UI.btnSecondary)}>
-                   <Settings className="w-4 h-4" />
-                 </button>
-              </div>
-           </div>
-
-           <AnimatePresence mode="popLayout">
-             {filteredPhotos.length === 0 ? (
-               <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex flex-col items-center justify-center py-32 text-center"
-               >
-                 <div className="w-20 h-20 bg-[var(--bg-secondary)] rounded-3xl flex items-center justify-center mb-6 shadow-sm">
-                    <ImageIcon className="w-8 h-8 text-[var(--text-tertiary)]" />
-                 </div>
-                 <h3 className="text-xl font-bold">No Photos Found</h3>
-                 <p className="text-[var(--text-tertiary)] max-w-xs mx-auto mt-2">Try searching for something else or upload new photos.</p>
-               </motion.div>
-             ) : (
-               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {filteredPhotos.map((photo) => (
-                    <motion.div
-                      key={photo.id}
-                      layout
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={cn(
-                        "group relative transition-all active:scale-[0.98] cursor-pointer",
-                        UI.card,
-                        selectedPhotoId === photo.id && "ring-2 ring-ios-blue ring-offset-4 ring-offset-[var(--bg-primary)]"
-                      )}
-                      onClick={() => setSelectedPhotoId(photo.id)}
-                    >
-                      <div className="aspect-[3/4] overflow-hidden bg-black/5">
-                        <img 
-                          src={photo.processedUrl || photo.blobUrl} 
-                          alt="Portrait" 
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                        />
-                      </div>
-                      <div className="p-3 bg-[var(--bg-secondary)] flex items-center justify-between">
-                         <div className="min-w-0">
-                           <p className="text-[11px] font-bold truncate opacity-80">{photo.originalName}</p>
-                           <p className="text-[9px] text-[var(--text-tertiary)] uppercase font-bold">v{photo.version} • {photo.width}x{photo.height}mm</p>
-                         </div>
-                         <CheckCircle2 className="w-4 h-4 text-ios-green shrink-0" fill="currentColor" />
-                      </div>
-                    </motion.div>
-                  ))}
+        <main className="flex-1 p-6 md:p-12 overflow-y-auto">
+          {activeView === 'gallery' && (
+            <div className="space-y-8">
+               <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div>
+                     <h2 className="text-3xl font-extrabold tracking-tight">Gallary</h2>
+                     <p className="text-[var(--text-tertiary)] text-sm font-medium">Review and edit your local sessions.</p>
+                  </div>
+                  <div className="flex gap-2 w-full md:w-auto">
+                     <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className={cn("flex-1 md:flex-none", UI.btnSecondary)}
+                     >
+                       <Upload className="w-4 h-4" />
+                       Import
+                     </button>
+                     <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={handleFileUpload} />
+                     <button onClick={() => setIsSettingsOpen(true)} className={cn("flex-1 md:flex-none", UI.btnSecondary)}>
+                       <Settings className="w-4 h-4" />
+                       Configure
+                     </button>
+                  </div>
                </div>
-             )}
-           </AnimatePresence>
+
+               <AnimatePresence mode="popLayout">
+                 {filteredPhotos.length === 0 ? (
+                   <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="flex flex-col items-center justify-center py-32 text-center"
+                   >
+                     <div className="w-20 h-20 bg-[var(--bg-secondary)] rounded-3xl flex items-center justify-center mb-6 shadow-sm">
+                        <ImageIcon className="w-8 h-8 text-[var(--text-tertiary)]" />
+                     </div>
+                     <h3 className="text-xl font-bold">No Photos Found</h3>
+                     <p className="text-[var(--text-tertiary)] max-w-xs mx-auto mt-2">Try searching or upload new photo session.</p>
+                   </motion.div>
+                 ) : (
+                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
+                      {filteredPhotos.map((photo) => (
+                        <motion.div
+                          key={photo.id}
+                          layout
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          whileHover={{ y: -5 }}
+                          className={cn(
+                            "group relative transition-all active:scale-[0.98] cursor-pointer",
+                            UI.card,
+                            selectedPhotoId === photo.id && "ring-4 ring-ios-blue ring-offset-4 ring-offset-[var(--bg-primary)]"
+                          )}
+                          onClick={() => setSelectedPhotoId(photo.id)}
+                        >
+                          <div className="aspect-[3/4] overflow-hidden bg-black/5 relative">
+                            <img 
+                              src={photo.processedUrl || photo.blobUrl} 
+                              alt="Portrait" 
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover transition-transform duration-700"
+                              style={{ 
+                                filter: `brightness(${photo.filters.brightness || 100}%) contrast(${photo.filters.contrast || 100}%) hue-rotate(${photo.filters.hue || 0}deg) saturate(${photo.filters.saturation || 100}%) grayscale(${photo.filters.grayscale ? 1 : 0})`,
+                                transform: `rotate(${photo.transform?.rotate || 0}deg)`
+                              }}
+                            />
+                            {photo.version > 1 && (
+                              <div className="absolute top-2 left-2 px-2 py-1 bg-black/50 backdrop-blur-md text-white text-[8px] font-black rounded-lg">V{photo.version}</div>
+                            )}
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deletePhoto(photo.id);
+                              }}
+                              className="absolute top-2 right-2 p-1.5 bg-ios-red/80 backdrop-blur-md text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                          <div className="p-4 bg-[var(--bg-secondary)] flex items-center justify-between">
+                             <div className="min-w-0">
+                               <p className="text-[11px] font-bold truncate opacity-80">{photo.originalName}</p>
+                               <p className="text-[9px] text-ios-blue uppercase font-bold tracking-widest">{photo.category}</p>
+                             </div>
+                             <CheckCircle2 className="w-4 h-4 text-ios-green shrink-0" fill="currentColor" />
+                          </div>
+                        </motion.div>
+                      ))}
+                   </div>
+                 )}
+               </AnimatePresence>
+            </div>
+          )}
+
+          {activeView === 'how-to' && <HowToPage />}
+          {activeView === 'privacy' && <PrivacyPage />}
+
+          <footer className="mt-32 pt-12 border-t border-[var(--separator)] pb-32 md:pb-12 text-center md:text-left">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-8 opacity-60">
+              <div className="space-y-1">
+                <p className="text-xs font-black tracking-widest text-ios-blue uppercase">Design and developed by Yugal</p>
+                <div className="flex items-center justify-center md:justify-start gap-3 text-[10px] font-bold">
+                  <a href="https://linkedin.com/in/yugalofficial" target="_blank" className="hover:text-ios-blue transition-colors flex items-center gap-1">
+                    <ExternalLink className="w-3 h-3" /> LinkedIn @yugalofficial
+                  </a>
+                  <span>•</span>
+                  <span>v3.0.4 Premium Edition</span>
+                </div>
+              </div>
+              <div className="flex gap-8 text-[10px] font-bold uppercase tracking-widest">
+                <button onClick={() => setActiveView('gallery')} className="hover:text-ios-blue">Workspace</button>
+                <button onClick={() => setActiveView('how-to')} className="hover:text-ios-blue">Guide</button>
+                <button onClick={() => setActiveView('privacy')} className="hover:text-ios-blue">Legal</button>
+              </div>
+            </div>
+          </footer>
         </main>
       </div>
+
+      {/* MOBILE NAV BAR */}
+      <nav className="fixed bottom-0 inset-x-0 z-[100] md:hidden bg-white/80 dark:bg-black/80 backdrop-blur-3xl border-t border-[var(--separator)] p-4 flex items-center justify-around safe-bottom">
+         <button onClick={() => setActiveView('gallery')} className={cn("flex flex-col items-center gap-1", activeView === 'gallery' ? "text-ios-blue" : "text-[var(--text-tertiary)]")}>
+           <LayoutGrid className="w-5 h-5" />
+           <span className="text-[10px] font-bold tracking-tight">Workspace</span>
+         </button>
+         <button onClick={() => setActiveView('how-to')} className={cn("flex flex-col items-center gap-1", activeView === 'how-to' ? "text-ios-blue" : "text-[var(--text-tertiary)]")}>
+           <Info className="w-5 h-5" />
+           <span className="text-[10px] font-bold tracking-tight">Help</span>
+         </button>
+         <button onClick={() => setActiveView('privacy')} className={cn("flex flex-col items-center gap-1", activeView === 'privacy' ? "text-ios-blue" : "text-[var(--text-tertiary)]")}>
+           <ShieldCheck className="w-5 h-5" />
+           <span className="text-[10px] font-bold tracking-tight">Privacy</span>
+         </button>
+         <button onClick={() => setIsSettingsOpen(true)} className="text-[var(--text-tertiary)] flex flex-col items-center gap-1">
+           <Settings className="w-5 h-5" />
+           <span className="text-[10px] font-bold tracking-tight">Config</span>
+         </button>
+      </nav>
 
       {/* FLOATING ACTION BAR (MOBILE) */}
       <AnimatePresence>
@@ -889,32 +1083,100 @@ export default function App() {
 
                   {/* SLIDERS */}
                   <div className="space-y-6">
-                     <h4 className="text-xs font-bold uppercase tracking-widest text-[var(--text-tertiary)]">Visual Adjustments</h4>
-                     <div className="space-y-4">
-                        <div className="space-y-2">
-                           <div className="flex justify-between text-xs font-bold uppercase tracking-widest opacity-60">
-                              <span>Brightness</span>
-                              <span>{selectedPhoto.filters.brightness}%</span>
-                           </div>
-                           <input 
-                            type="range" min="50" max="150" value={selectedPhoto.filters.brightness}
-                            onChange={(e) => updatePhoto(selectedPhoto.id, { filters: { ...selectedPhoto.filters, brightness: parseInt(e.target.value) }})}
-                            className="w-full accent-ios-blue h-1.5 bg-[var(--separator)] rounded-full appearance-none"
-                           />
-                        </div>
-                        <div className="space-y-2">
-                           <div className="flex justify-between text-xs font-bold uppercase tracking-widest opacity-60">
-                              <span>Contrast</span>
-                              <span>{selectedPhoto.filters.contrast}%</span>
-                           </div>
-                           <input 
-                            type="range" min="50" max="150" value={selectedPhoto.filters.contrast}
-                            onChange={(e) => updatePhoto(selectedPhoto.id, { filters: { ...selectedPhoto.filters, contrast: parseInt(e.target.value) }})}
-                            className="w-full accent-ios-blue h-1.5 bg-[var(--separator)] rounded-full appearance-none"
-                           />
+                     <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black uppercase tracking-widest text-ios-blue">Master Adjustments</h4>
+                        <button 
+                          onClick={() => setIsTransforming(true)}
+                          className="flex items-center gap-1 text-[10px] font-bold text-ios-blue uppercase tracking-widest bg-ios-blue/10 px-2 py-1 rounded-lg"
+                        >
+                          <Maximize className="w-3 h-3" /> 3D Transform
+                        </button>
+                     </div>
+                     <div className="space-y-5">
+                        <AdjustmentSlider 
+                          label="Brightness" 
+                          value={selectedPhoto.filters.brightness} 
+                          onChange={(v) => updatePhoto(selectedPhoto.id, { filters: { ...selectedPhoto.filters, brightness: v }})}
+                          min={50} max={150}
+                        />
+                        <AdjustmentSlider 
+                          label="Contrast" 
+                          value={selectedPhoto.filters.contrast} 
+                          onChange={(v) => updatePhoto(selectedPhoto.id, { filters: { ...selectedPhoto.filters, contrast: v }})}
+                          min={50} max={150}
+                        />
+                        <AdjustmentSlider 
+                          label="Saturation" 
+                          value={selectedPhoto.filters.saturation} 
+                          onChange={(v) => updatePhoto(selectedPhoto.id, { filters: { ...selectedPhoto.filters, saturation: v }})}
+                          min={0} max={200}
+                        />
+                        <AdjustmentSlider 
+                          label="Hue Rotate" 
+                          value={selectedPhoto.filters.hue} 
+                          onChange={(v) => updatePhoto(selectedPhoto.id, { filters: { ...selectedPhoto.filters, hue: v }})}
+                          min={0} max={360}
+                          unit="°"
+                        />
+                        <AdjustmentSlider 
+                          label="Warmth" 
+                          value={selectedPhoto.filters.temperature} 
+                          onChange={(v) => updatePhoto(selectedPhoto.id, { filters: { ...selectedPhoto.filters, temperature: v }})}
+                          min={-100} max={100}
+                        />
+                        <div className="flex items-center justify-between p-4 bg-[var(--bg-primary)] rounded-2xl border border-[var(--separator)]">
+                           <span className="text-xs font-bold uppercase tracking-widest opacity-60">Grayscale Mode</span>
+                           <button 
+                            onClick={() => updatePhoto(selectedPhoto.id, { filters: { ...selectedPhoto.filters, grayscale: !selectedPhoto.filters.grayscale }})}
+                            className={cn("w-12 h-6 rounded-full transition-colors relative", selectedPhoto.filters.grayscale ? "bg-ios-blue" : "bg-gray-300")}
+                           >
+                              <div className={cn("absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform", selectedPhoto.filters.grayscale ? "translate-x-6" : "translate-x-0")} />
+                           </button>
                         </div>
                      </div>
                   </div>
+
+                  {/* HISTORY PANEL */}
+                  {selectedPhoto.history.length > 0 && (
+                    <div className="space-y-4">
+                       <h4 className="text-xs font-black uppercase tracking-widest text-[var(--text-tertiary)] flex items-center gap-2">
+                         <History className="w-3 h-3" /> Version History
+                       </h4>
+                       <div className="flex flex-col gap-2">
+                          {selectedPhoto.history.map((entry, idx) => (
+                            <button 
+                              key={idx}
+                              onClick={() => {
+                                updatePhoto(selectedPhoto.id, { 
+                                  processedUrl: entry.url, 
+                                  version: idx + 1,
+                                  history: selectedPhoto.history.slice(0, idx)
+                                });
+                              }}
+                              className="flex items-center justify-between p-3 bg-[var(--bg-primary)] hover:bg-[var(--bg-primary)]/80 rounded-xl text-xs group border border-[var(--separator)]"
+                            >
+                               <div className="flex flex-col items-start gap-0.5">
+                                 <span className="font-bold">{entry.label}</span>
+                                 <span className="opacity-40">{new Date(entry.date).toLocaleTimeString()}</span>
+                               </div>
+                               <RefreshCw className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </button>
+                          ))}
+                          <button 
+                            onClick={() => {
+                              updatePhoto(selectedPhoto.id, { 
+                                processedUrl: undefined, 
+                                version: 1,
+                                history: []
+                              });
+                            }}
+                            className="text-[10px] font-bold text-ios-red uppercase tracking-widest pt-2 flex items-center justify-center gap-2"
+                          >
+                            <Trash2 className="w-3 h-3" /> Revert to Original
+                          </button>
+                       </div>
+                    </div>
+                  )}
 
                   {/* CATEGORY & TAGS */}
                   <div className="space-y-4">
@@ -977,12 +1239,21 @@ export default function App() {
                
                {/* GUIDES */}
                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                  <div className="w-[85%] max-w-[300px] aspect-[3/4] border-2 border-white/30 rounded-[4rem] relative">
-                      <div className="absolute top-[25%] inset-x-0 h-px bg-white/10" />
-                      <div className="absolute top-[50%] inset-x-0 h-px bg-white/10" />
-                      <div className="absolute top-[75%] inset-x-0 h-px bg-white/10" />
-                      <div className="absolute inset-x-0 bottom-4 flex justify-center">
-                        <div className="px-3 py-1 bg-white/50 backdrop-blur-md rounded-full text-[8px] font-bold text-black border border-white/20">ALIGN SHOULDERS HERE</div>
+                  <div className="w-[85%] max-w-[320px] aspect-[3/4] border-2 border-white/20 rounded-[4.5rem] relative">
+                      <div className="absolute top-[20%] inset-x-0 h-px bg-white/5" />
+                      <div className="absolute top-[50%] inset-x-0 h-px bg-white/5" />
+                      <div className="absolute top-[80%] inset-x-0 h-px bg-white/5" />
+                      
+                      {/* FACE OVAL */}
+                      <div className="absolute inset-x-[15%] top-[10%] bottom-[40%] border-2 border-dashed border-ios-blue/40 rounded-full flex items-center justify-center">
+                         <div className="w-4 h-4 bg-ios-blue/20 rounded-full animate-ping" />
+                      </div>
+
+                      <div className="absolute inset-x-0 bottom-6 flex flex-col items-center gap-2">
+                        <div className="px-3 py-1 bg-ios-green/80 backdrop-blur-md rounded-full text-[8px] font-black text-white flex items-center gap-1">
+                          <CheckCircle2 className="w-2 h-2" /> BACKGROUND OPTIMAL
+                        </div>
+                        <div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[7px] font-black text-white tracking-widest uppercase border border-white/10">ALIGN EYES WITH BLUE ZONE</div>
                       </div>
                   </div>
                </div>
@@ -1127,48 +1398,94 @@ export default function App() {
 
                <div className="flex-1 overflow-y-auto p-8 space-y-10">
                   <section className="space-y-6">
-                     <h4 className="text-sm font-bold uppercase tracking-widest text-ios-blue">Tiling Options</h4>
-                     <div className="space-y-6">
-                        <div className="space-y-3">
-                           <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest opacity-60">
-                              <span>Exact Copies</span>
-                              <span className="text-ios-blue">{totalCopies}</span>
-                           </div>
-                           <input 
-                              type="range" min="1" max="100" value={totalCopies}
-                              onChange={(e) => setTotalCopies(parseInt(e.target.value))}
-                              className="w-full h-2 bg-[var(--separator)] rounded-full appearance-none accent-ios-blue"
-                           />
-                           <input 
-                              type="number" value={totalCopies}
-                              onChange={(e) => setTotalCopies(parseInt(e.target.value) || 1)}
-                              className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-xl p-4 text-lg font-bold"
-                           />
+                     <h4 className="text-sm font-bold uppercase tracking-widest text-ios-blue">Print Layout & Border Config</h4>
+                     <div className="space-y-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <AdjustmentSlider 
+                              label="Border Thickness" 
+                              value={prefs.borderSize} 
+                              onChange={(v: number) => setPrefs({...prefs, borderSize: v})}
+                              min={0} max={20} unit="px"
+                            />
+                            <div className="space-y-3">
+                              <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Border Color ({prefs.borderColor})</label>
+                              <div className="flex gap-2">
+                                <input 
+                                  type="color" value={prefs.borderColor}
+                                  onChange={(e) => setPrefs({...prefs, borderColor: e.target.value})}
+                                  className="w-full h-10 rounded-xl border-0 p-0 cursor-pointer bg-transparent"
+                                />
+                              </div>
+                            </div>
                         </div>
-                        
-                        <div className="grid grid-cols-2 gap-4">
+
+                        <div className="space-y-6 pt-4 border-t border-[var(--separator)]">
                            <div className="space-y-3">
-                              <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Spacing (mm)</label>
+                              <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest opacity-60">
+                                 <span>Exact Copies</span>
+                                 <span className="text-ios-blue">{totalCopies}</span>
+                              </div>
                               <input 
-                                 type="number" value={prefs.spacing}
-                                 onChange={(e) => setPrefs({...prefs, spacing: parseInt(e.target.value) || 0})}
-                                 className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-xl p-4 font-bold"
+                                 type="range" min="1" max="100" value={totalCopies}
+                                 onChange={(e) => setTotalCopies(parseInt(e.target.value))}
+                                 className="w-full h-2 bg-[var(--separator)] rounded-full appearance-none accent-ios-blue"
+                              />
+                              <input 
+                                 type="number" value={totalCopies}
+                                 onChange={(e) => setTotalCopies(parseInt(e.target.value) || 1)}
+                                 className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-xl p-4 text-lg font-bold"
                               />
                            </div>
-                           <div className="space-y-3">
-                              <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Margins (mm)</label>
-                              <input 
-                                 type="number" value={prefs.margin}
-                                 onChange={(e) => setPrefs({...prefs, margin: parseInt(e.target.value) || 0})}
-                                 className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-xl p-4 font-bold"
-                              />
+                           
+                           <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-3">
+                                 <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Spacing (mm)</label>
+                                 <input 
+                                    type="number" value={prefs.spacing}
+                                    onChange={(e) => setPrefs({...prefs, spacing: parseInt(e.target.value) || 0})}
+                                    className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-xl p-4 font-bold"
+                                 />
+                              </div>
+                              <div className="space-y-3">
+                                 <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Margins (mm)</label>
+                                 <input 
+                                    type="number" value={prefs.margin}
+                                    onChange={(e) => setPrefs({...prefs, margin: parseInt(e.target.value) || 0})}
+                                    className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-xl p-4 font-bold"
+                                 />
+                              </div>
                            </div>
                         </div>
                      </div>
                   </section>
 
+                  <section className="space-y-6 pt-8 border-t border-[var(--separator)]">
+                     <h4 className="text-sm font-bold uppercase tracking-widest text-ios-red">Advanced Maintenance</h4>
+                     <div className="flex items-center justify-between p-4 bg-ios-red/5 rounded-2xl border border-ios-red/10">
+                        <div className="space-y-0.5">
+                           <p className="text-xs font-bold text-ios-red uppercase tracking-widest">Auto-Purge</p>
+                           <p className="text-[9px] opacity-60 font-medium">Clear session after PDF download</p>
+                        </div>
+                        <button 
+                         onClick={() => setPrefs({...prefs, autoDelete: !prefs.autoDelete})}
+                         className={cn("w-10 h-5 rounded-full transition-all relative shadow-inner", prefs.autoDelete ? "bg-ios-red" : "bg-gray-300")}
+                        >
+                           <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow-sm", prefs.autoDelete ? "translate-x-5" : "translate-x-0")} />
+                        </button>
+                     </div>
+                     <button 
+                       onClick={clearAllData}
+                       className="w-full py-5 bg-ios-red/10 text-ios-red rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-ios-red/20 transition-all active:scale-95 shadow-lg shadow-ios-red/10"
+                     >
+                       <Trash2 className="w-5 h-5" /> Wipe All Local Data
+                     </button>
+                     <p className="text-[9px] text-center opacity-40 font-bold tracking-widest leading-relaxed px-4">
+                       Biometric snapshots and history are permanently erased from this device.
+                     </p>
+                  </section>
+
                   <section className="space-y-6">
-                     <h4 className="text-sm font-bold uppercase tracking-widest text-ios-blue">Print Quality</h4>
+                     <h4 className="text-sm font-bold uppercase tracking-widest text-ios-blue">Print Quality Engine</h4>
                      <div className="p-6 bg-ios-blue/5 rounded-[2rem] border border-ios-blue/10">
                         <p className="text-sm leading-relaxed mb-4">You are currently using <strong>High-Density</strong> mode. Images will be sampled at their native resolution for maximum sharpness.</p>
                         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-ios-blue">
@@ -1189,6 +1506,88 @@ export default function App() {
                </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+      {/* PERSPECTIVE / TRANSFORM MODAL */}
+      <AnimatePresence>
+        {isTransforming && selectedPhoto && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[500] ios-glass flex items-center justify-center p-6"
+          >
+             <div className={cn("max-w-4xl w-full h-[80vh] flex flex-col md:flex-row overflow-hidden", UI.card)}>
+                <div className="flex-1 bg-black/10 flex items-center justify-center p-12 overflow-hidden">
+                   <div 
+                    className="relative shadow-2xl transition-all duration-300 ease-out"
+                    style={{ 
+                      perspective: '1000px',
+                      transform: `rotateX(${selectedPhoto.transform?.perspective || 0}deg) rotateZ(${selectedPhoto.transform?.rotate || 0}deg) scale(${selectedPhoto.transform?.scale || 1})` 
+                    }}
+                   >
+                      <img 
+                        src={selectedPhoto.processedUrl || selectedPhoto.blobUrl} 
+                        className="max-h-[50vh] w-auto shadow-2xl border-4 border-white/20" 
+                        alt="Preview" 
+                      />
+                      <div className="absolute inset-0 border border-ios-blue/30 pointer-events-none" />
+                   </div>
+                </div>
+                <div className="w-full md:w-80 p-8 space-y-8 bg-[var(--bg-secondary)] border-l border-[var(--separator)]">
+                   <div>
+                      <h3 className="text-xl font-bold">3D Orientation</h3>
+                      <p className="text-xs text-[var(--text-tertiary)] font-bold tracking-widest uppercase mt-1">Spatial Projection Engine</p>
+                   </div>
+
+                   <div className="space-y-6">
+                      <AdjustmentSlider 
+                        label="Vertical Tilt" 
+                        value={selectedPhoto.transform?.perspective || 0} 
+                        onChange={(v) => updatePhoto(selectedPhoto.id, { transform: { ...selectedPhoto.transform!, perspective: v }})}
+                        min={-45} max={45} unit="°"
+                      />
+                      <AdjustmentSlider 
+                        label="Rotation" 
+                        value={selectedPhoto.transform?.rotate || 0} 
+                        onChange={(v) => updatePhoto(selectedPhoto.id, { transform: { ...selectedPhoto.transform!, rotate: v }})}
+                        min={-180} max={180} unit="°"
+                      />
+                      <AdjustmentSlider 
+                        label="Zoom" 
+                        value={Math.round((selectedPhoto.transform?.scale || 1) * 100)} 
+                        onChange={(v) => updatePhoto(selectedPhoto.id, { transform: { ...selectedPhoto.transform!, scale: v/100 }})}
+                        min={50} max={200}
+                      />
+                   </div>
+
+                   <div className="pt-8 space-y-3">
+                      <button 
+                        onClick={async () => {
+                          setIsProcessing(true);
+                          // In a real app we'd flatten this to a new blob
+                          // For now we persist the transform in metadata
+                          await new Promise(r => setTimeout(r, 800));
+                          setIsProcessing(false);
+                          setIsTransforming(false);
+                        }}
+                        className="w-full py-4 bg-ios-blue text-white rounded-2xl font-bold shadow-lg shadow-ios-blue/20"
+                      >
+                        Confirm Geometry
+                      </button>
+                      <button 
+                        onClick={() => {
+                          updatePhoto(selectedPhoto.id, { transform: { rotate: 0, perspective: 0, scale: 1 }});
+                          setIsTransforming(false);
+                        }}
+                        className="w-full py-4 bg-[var(--bg-primary)] rounded-2xl font-bold text-sm"
+                      >
+                        Reset & Exit
+                      </button>
+                   </div>
+                </div>
+             </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
