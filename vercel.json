@@ -21,8 +21,7 @@
     },
     {
        "source": "/(.*)",
-       "destination": "/dist/index.html",
-       "check": true
+       "destination": "/dist/index.html"
     }
   ]
 }
