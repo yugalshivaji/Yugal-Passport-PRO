@@ -32,7 +32,8 @@ import {
   AlertTriangle,
   Key,
   Lock,
-  MessageSquare
+  MessageSquare,
+  Menu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Cropper from 'react-cropper';
@@ -451,6 +452,7 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showApiModal, setShowApiModal] = useState(false);
   const [apiKeys, setApiKeys] = useState(() => {
     const saved = localStorage.getItem('yugal_api_keys');
@@ -996,12 +998,94 @@ export default function App() {
           
           <button 
             onClick={() => startCamera()}
-            className="p-2.5 rounded-full bg-ios-blue text-white shadow-lg shadow-ios-blue/20 hover:brightness-110 transition-all active:scale-95"
+            className="p-2.5 rounded-full bg-ios-blue text-white shadow-lg shadow-ios-blue/20 hover:brightness-110 transition-all active:scale-95 hidden md:flex"
           >
             <Camera className="w-5 h-5" />
           </button>
+
+          <button 
+            onClick={() => setIsMenuOpen(true)}
+            className="md:hidden p-2.5 rounded-full bg-[var(--bg-secondary)] border border-[var(--separator)] text-[var(--text-secondary)]"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
         </div>
       </header>
+
+      {/* MOBILE HAMBURGER MENU DRAWER */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMenuOpen(false)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-md z-[200] md:hidden"
+            />
+            <motion.div 
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              className="fixed inset-y-0 left-0 z-[210] w-80 bg-[var(--bg-secondary)] shadow-2xl flex flex-col p-8 md:hidden ios-glass border-r border-[var(--separator)]"
+            >
+               <div className="flex items-center justify-between mb-10">
+                  <span className="font-bold text-lg tracking-tight">App Menu</span>
+                  <button onClick={() => setIsMenuOpen(false)} className="p-2 rounded-full hover:bg-[var(--bg-primary)]">
+                    <X className="w-6 h-6" />
+                  </button>
+               </div>
+               
+               <div className="space-y-6">
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-tertiary)] ml-2">Core Tools</h4>
+                    <button 
+                      onClick={() => { setActiveView('gallery'); setIsMenuOpen(false); }}
+                      className={cn("w-full flex items-center gap-4 p-4 rounded-2xl font-bold transition-all", activeView === 'gallery' ? "bg-ios-blue text-white shadow-lg shadow-ios-blue/20" : "hover:bg-[var(--bg-primary)]")}
+                    >
+                      <LayoutGrid className="w-5 h-5" /> Workspace
+                    </button>
+                    <button 
+                      onClick={() => { startCamera(); setIsMenuOpen(false); }}
+                      className="w-full flex items-center gap-4 p-4 rounded-2xl font-bold hover:bg-[var(--bg-primary)]"
+                    >
+                      <Camera className="w-5 h-5" /> Active Camera
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-tertiary)] ml-2">Resources</h4>
+                    <button 
+                      onClick={() => { setActiveView('how-to'); setIsMenuOpen(false); }}
+                      className={cn("w-full flex items-center gap-4 p-4 rounded-2xl font-bold transition-all", activeView === 'how-to' ? "bg-ios-blue text-white shadow-lg shadow-ios-blue/20" : "hover:bg-[var(--bg-primary)]")}
+                    >
+                      <Info className="w-5 h-5" /> User Guide
+                    </button>
+                    <button 
+                      onClick={() => { setActiveView('privacy'); setIsMenuOpen(false); }}
+                      className={cn("w-full flex items-center gap-4 p-4 rounded-2xl font-bold transition-all", activeView === 'privacy' ? "bg-ios-blue text-white shadow-lg shadow-ios-blue/20" : "hover:bg-[var(--bg-primary)]")}
+                    >
+                      <ShieldCheck className="w-5 h-5" /> Privacy
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 pt-6 border-t border-[var(--separator)]">
+                    <button 
+                      onClick={() => { setIsSettingsOpen(true); setIsMenuOpen(false); }}
+                      className="w-full flex items-center gap-4 p-4 rounded-2xl font-bold hover:bg-[var(--bg-primary)]"
+                    >
+                      <Settings className="w-5 h-5" /> Print Settings
+                    </button>
+                  </div>
+               </div>
+               
+               <div className="mt-auto pt-10 text-center">
+                  <p className="text-[10px] font-bold opacity-30 uppercase tracking-[0.3em]">Yugal Portrait v3.2</p>
+               </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* MAIN LAYOUT */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row min-h-[calc(100vh-80px)]">
@@ -1031,7 +1115,7 @@ export default function App() {
             <div className="space-y-8">
                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                   <div>
-                     <h2 className="text-3xl font-extrabold tracking-tight">Gallary</h2>
+                     <h2 className="text-3xl font-extrabold tracking-tight">Gallery</h2>
                      <p className="text-[var(--text-tertiary)] text-sm font-medium">Review and edit your local sessions.</p>
                   </div>
                   <div className="flex gap-2 w-full md:w-auto">
@@ -1142,26 +1226,6 @@ export default function App() {
           </footer>
         </main>
       </div>
-
-      {/* MOBILE NAV BAR */}
-      <nav className="fixed bottom-0 inset-x-0 z-[100] md:hidden bg-white/80 dark:bg-black/80 backdrop-blur-3xl border-t border-[var(--separator)] p-4 flex items-center justify-around safe-bottom">
-         <button onClick={() => setActiveView('gallery')} className={cn("flex flex-col items-center gap-1", activeView === 'gallery' ? "text-ios-blue" : "text-[var(--text-tertiary)]")}>
-           <LayoutGrid className="w-5 h-5" />
-           <span className="text-[10px] font-bold tracking-tight">Workspace</span>
-         </button>
-         <button onClick={() => setActiveView('how-to')} className={cn("flex flex-col items-center gap-1", activeView === 'how-to' ? "text-ios-blue" : "text-[var(--text-tertiary)]")}>
-           <Info className="w-5 h-5" />
-           <span className="text-[10px] font-bold tracking-tight">Help</span>
-         </button>
-         <button onClick={() => setActiveView('privacy')} className={cn("flex flex-col items-center gap-1", activeView === 'privacy' ? "text-ios-blue" : "text-[var(--text-tertiary)]")}>
-           <ShieldCheck className="w-5 h-5" />
-           <span className="text-[10px] font-bold tracking-tight">Privacy</span>
-         </button>
-         <button onClick={() => setIsSettingsOpen(true)} className="text-[var(--text-tertiary)] flex flex-col items-center gap-1">
-           <Settings className="w-5 h-5" />
-           <span className="text-[10px] font-bold tracking-tight">Config</span>
-         </button>
-      </nav>
 
       {/* FLOATING ACTION BAR (MOBILE) */}
       <AnimatePresence>

@@ -140,18 +140,15 @@ app.post('/api/enhance', async (req: any, res) => {
     const userApiSecret = req.headers['x-user-cloud-secret'];
 
     if (!userCloudName || !userApiKey || !userApiSecret) {
-      return res.status(401).json({ error: 'Cloudinary credentials missing', code: 'LIMIT_REACHED' });
+      return res.status(401).json({ error: 'Cloudinary credentials missing. Please configure them in Settings.', code: 'LIMIT_REACHED' });
     }
 
-    let cloudInstance = Object.assign(Object.create(Object.getPrototypeOf(cloudinary)), cloudinary);
-    cloudInstance.config({
-      cloud_name: userCloudName,
-      api_key: userApiKey,
-      api_secret: userApiSecret,
-    });
-
     const result = await new Promise((resolve, reject) => {
-        cloudInstance.uploader.upload(`data:image/jpeg;base64,${image}`, {
+        // Pass configuration directly to the upload call to avoid singleton issues
+        cloudinary.uploader.upload(`data:image/jpeg;base64,${image}`, {
+            cloud_name: userCloudName,
+            api_key: userApiKey,
+            api_secret: userApiSecret,
             folder: 'yugal_passport',
             transformation: [{ effect: 'gen_restore' }]
         }, (error, result) => {
@@ -165,8 +162,8 @@ app.post('/api/enhance', async (req: any, res) => {
     console.error('Enhancement error:', error);
     const status = error.http_code || 500;
     res.status(status).json({ 
-      error: 'Failed to enhance image', 
-      details: error.message,
+      error: 'AI Enhancement failed', 
+      details: error.message || 'Check your Cloudinary credits and configuration.',
       code: status === 401 || status === 403 || status === 429 ? 'LIMIT_REACHED' : 'GENERIC_ERROR'
     });
   }
@@ -201,11 +198,23 @@ app.post('/api/remove-bg', async (req: any, res) => {
     res.set('Content-Type', 'image/png');
     res.send(response.data);
   } catch (error: any) {
-    console.error('Background removal error:', error.response?.data || error.message);
+    let details = error.message;
+    if (error.response && error.response.data) {
+      try {
+          // remove.bg returns binary in some cases even for errors if not careful, 
+          // but usually it's a JSON string if requested or error occurs
+          const decoder = new TextDecoder("utf-8");
+          const errorData = decoder.decode(error.response.data);
+          details = errorData || error.message;
+      } catch (e) {
+          details = error.message;
+      }
+    }
+    console.error('Background removal error:', details);
     const status = error.response?.status || 500;
     res.status(status).json({ 
-      error: 'Failed to remove background', 
-      details: error.response?.data?.toString() || error.message,
+      error: 'AI Background removal failed', 
+      details: details,
       code: status === 429 || status === 401 || status === 403 ? 'LIMIT_REACHED' : 'GENERIC_ERROR'
     });
   }
