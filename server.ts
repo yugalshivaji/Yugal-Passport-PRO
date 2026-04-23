@@ -18,13 +18,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
+// Configure Cloudinary (Removed global config, strictly user-provided)
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(express.json({ limit: '50mb' }));
@@ -145,15 +139,16 @@ app.post('/api/enhance', async (req: any, res) => {
     const userApiKey = req.headers['x-user-cloud-key'];
     const userApiSecret = req.headers['x-user-cloud-secret'];
 
-    let cloudInstance = cloudinary;
-    if (userCloudName && userApiKey && userApiSecret) {
-      cloudInstance = Object.assign(Object.create(Object.getPrototypeOf(cloudinary)), cloudinary);
-      cloudInstance.config({
-        cloud_name: userCloudName,
-        api_key: userApiKey,
-        api_secret: userApiSecret,
-      });
+    if (!userCloudName || !userApiKey || !userApiSecret) {
+      return res.status(401).json({ error: 'Cloudinary credentials missing', code: 'LIMIT_REACHED' });
     }
+
+    let cloudInstance = Object.assign(Object.create(Object.getPrototypeOf(cloudinary)), cloudinary);
+    cloudInstance.config({
+      cloud_name: userCloudName,
+      api_key: userApiKey,
+      api_secret: userApiSecret,
+    });
 
     const result = await new Promise((resolve, reject) => {
         cloudInstance.uploader.upload(`data:image/jpeg;base64,${image}`, {
@@ -183,10 +178,10 @@ app.post('/api/remove-bg', async (req: any, res) => {
     if (!image) return res.status(400).json({ error: 'No image provided' });
 
     const userKey = req.headers['x-user-api-key'];
-    const apiKey = userKey || process.env.REMOVE_BG_API_KEY;
+    const apiKey = userKey;
 
     if (!apiKey) {
-      return res.status(400).json({ error: 'API key missing', code: 'LIMIT_REACHED' });
+      return res.status(401).json({ error: 'Remove.bg API key missing', code: 'LIMIT_REACHED' });
     }
 
     const response = await axios.post(
