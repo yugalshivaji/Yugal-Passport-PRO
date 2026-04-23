@@ -140,8 +140,23 @@ app.post('/api/enhance', async (req: any, res) => {
     const { image } = req.body;
     if (!image) return res.status(400).json({ error: 'No image provided' });
 
+    // Use user-provided keys if available in headers
+    const userCloudName = req.headers['x-user-cloud-name'];
+    const userApiKey = req.headers['x-user-cloud-key'];
+    const userApiSecret = req.headers['x-user-cloud-secret'];
+
+    let cloudInstance = cloudinary;
+    if (userCloudName && userApiKey && userApiSecret) {
+      cloudInstance = Object.assign(Object.create(Object.getPrototypeOf(cloudinary)), cloudinary);
+      cloudInstance.config({
+        cloud_name: userCloudName,
+        api_key: userApiKey,
+        api_secret: userApiSecret,
+      });
+    }
+
     const result = await new Promise((resolve, reject) => {
-        cloudinary.uploader.upload(`data:image/jpeg;base64,${image}`, {
+        cloudInstance.uploader.upload(`data:image/jpeg;base64,${image}`, {
             folder: 'yugal_passport',
             transformation: [{ effect: 'gen_restore' }]
         }, (error, result) => {
@@ -151,9 +166,14 @@ app.post('/api/enhance', async (req: any, res) => {
     }) as any;
 
     res.json({ url: result.secure_url });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Enhancement error:', error);
-    res.status(500).json({ error: 'Failed to enhance image' });
+    const status = error.http_code || 500;
+    res.status(status).json({ 
+      error: 'Failed to enhance image', 
+      details: error.message,
+      code: status === 401 || status === 403 || status === 429 ? 'LIMIT_REACHED' : 'GENERIC_ERROR'
+    });
   }
 });
 
@@ -190,7 +210,8 @@ app.post('/api/remove-bg', async (req: any, res) => {
     const status = error.response?.status || 500;
     res.status(status).json({ 
       error: 'Failed to remove background', 
-      details: error.response?.data?.toString() || error.message 
+      details: error.response?.data?.toString() || error.message,
+      code: status === 429 || status === 401 || status === 403 ? 'LIMIT_REACHED' : 'GENERIC_ERROR'
     });
   }
 });

@@ -28,7 +28,11 @@ import {
   ShieldCheck,
   MousePointer2,
   Maximize,
-  Sliders
+  Sliders,
+  AlertTriangle,
+  Key,
+  Lock,
+  MessageSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Cropper from 'react-cropper';
@@ -265,6 +269,158 @@ const FeatureCard = ({ icon, title, desc }: { icon: React.ReactNode, title: stri
   </div>
 );
 
+const ApiKeyModal = ({ isOpen, onClose, keys, onSave }: { isOpen: boolean, onClose: () => void, keys: any, onSave: (k: any) => void }) => {
+  const [localKeys, setLocalKeys] = useState(keys);
+  const [showInstructions, setShowInstructions] = useState<string | null>(null);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(localKeys);
+    onClose();
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="absolute inset-0 bg-black/60 backdrop-blur-md"
+          />
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+            className="relative w-full max-w-lg bg-[var(--bg-secondary)] rounded-[2.5rem] shadow-2xl border border-[var(--separator)] overflow-hidden ios-glass"
+          >
+            <div className="p-8 border-b border-[var(--separator)] flex items-center justify-between">
+               <div className="flex items-center gap-3">
+                  <div className="p-3 bg-ios-blue/10 rounded-2xl">
+                     <Key className="w-6 h-6 text-ios-blue" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">API Configuration</h2>
+                    <p className="text-[10px] text-[var(--text-tertiary)] uppercase font-bold tracking-widest">Connect AI Engines</p>
+                  </div>
+               </div>
+               <button onClick={onClose} className="p-2 hover:bg-[var(--bg-primary)] rounded-full transition-colors">
+                  <X className="w-5 h-5" />
+               </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-8 space-y-8 max-h-[70vh] overflow-y-auto">
+               <div className="p-4 bg-ios-red/5 rounded-2xl border border-ios-red/10 flex items-start gap-4">
+                  <AlertTriangle className="w-5 h-5 text-ios-red shrink-0 mt-1" />
+                  <p className="text-xs text-ios-red leading-relaxed font-medium">
+                    To use AI features while avoiding global limits, please provide your own API keys. These are stored <strong>only on your device</strong>.
+                  </p>
+               </div>
+
+               {/* REMOVE.BG SECTION */}
+               <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                     <label className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Remove.bg API Key</label>
+                     <button 
+                       type="button"
+                       onClick={() => setShowInstructions(showInstructions === 'removebg' ? null : 'removebg')}
+                       className="text-[10px] font-bold text-ios-blue hover:underline"
+                     >
+                       How to get?
+                     </button>
+                  </div>
+                  <input 
+                    type="password"
+                    placeholder="Enter Remove.bg Key"
+                    value={localKeys.removeBg}
+                    onChange={(e) => setLocalKeys({ ...localKeys, removeBg: e.target.value })}
+                    className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-2xl p-5 text-sm font-mono focus:ring-2 focus:ring-ios-blue outline-none transition-all"
+                  />
+                  {showInstructions === 'removebg' && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="p-4 bg-ios-blue/5 rounded-xl text-[11px] leading-relaxed space-y-2 border border-ios-blue/10">
+                       <p>1. Go to <a href="https://www.remove.bg/" target="_blank" className="text-ios-blue underline">remove.bg</a> and sign up.</p>
+                       <p>2. Go to **Dashboard** &gt; **API Keys**.</p>
+                       <p>3. Create a free key (50 free previews/month).</p>
+                    </motion.div>
+                  )}
+               </div>
+
+               {/* CLOUDINARY SECTION */}
+               <div className="space-y-6 pt-6 border-t border-[var(--separator)]">
+                  <div className="flex items-center justify-between">
+                     <label className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Cloudinary Credentials (Restoration)</label>
+                     <button 
+                       type="button"
+                       onClick={() => setShowInstructions(showInstructions === 'cloudinary' ? null : 'cloudinary')}
+                       className="text-[10px] font-bold text-ios-blue hover:underline"
+                     >
+                       How to get?
+                     </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 gap-4">
+                    <input 
+                      type="text"
+                      placeholder="Cloud Name"
+                      value={localKeys.cloudName}
+                      onChange={(e) => setLocalKeys({ ...localKeys, cloudName: e.target.value })}
+                      className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-2xl p-4 text-sm font-mono focus:ring-2 focus:ring-ios-blue outline-none transition-all"
+                    />
+                    <input 
+                      type="text"
+                      placeholder="API Key"
+                      value={localKeys.cloudApiKey}
+                      onChange={(e) => setLocalKeys({ ...localKeys, cloudApiKey: e.target.value })}
+                      className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-2xl p-4 text-sm font-mono focus:ring-2 focus:ring-ios-blue outline-none transition-all"
+                    />
+                    <input 
+                      type="password"
+                      placeholder="API Secret"
+                      value={localKeys.cloudApiSecret}
+                      onChange={(e) => setLocalKeys({ ...localKeys, cloudApiSecret: e.target.value })}
+                      className="w-full bg-[var(--bg-primary)] border border-[var(--separator)] rounded-2xl p-4 text-sm font-mono focus:ring-2 focus:ring-ios-blue outline-none transition-all"
+                    />
+                  </div>
+
+                  {showInstructions === 'cloudinary' && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="p-4 bg-ios-blue/5 rounded-xl text-[11px] leading-relaxed space-y-2 border border-ios-blue/10">
+                       <p>1. Create a free account at <a href="https://cloudinary.com/" target="_blank" className="text-ios-blue underline">Cloudinary</a>.</p>
+                       <p>2. Copy your **Cloud Name**, **API Key**, and **API Secret** from the Dashboard.</p>
+                       <p>3. Enable **Generative Credits** in settings if prompted.</p>
+                    </motion.div>
+                  )}
+               </div>
+
+               <div className="flex items-center gap-2 p-4 bg-ios-green/5 rounded-2xl border border-ios-green/10">
+                  <ShieldCheck className="w-4 h-4 text-ios-green" />
+                  <p className="text-[10px] text-ios-green font-bold uppercase tracking-wider">End-to-End Encrypted Local Storage</p>
+               </div>
+            </form>
+
+            <div className="p-8 bg-[var(--bg-primary)] border-t border-[var(--separator)] flex gap-4">
+               <button 
+                 type="button"
+                 onClick={onClose}
+                 className="flex-1 py-4 bg-[var(--bg-secondary)] border border-[var(--separator)] rounded-2xl font-bold tracking-wide transition-all"
+               >
+                 Cancel
+               </button>
+               <button 
+                 onClick={handleSubmit}
+                 className="flex-[2] py-4 bg-ios-blue text-white rounded-2xl font-bold tracking-wide shadow-xl shadow-ios-blue/20 transition-all hover:scale-[1.02] active:scale-95"
+               >
+                 Save Credentials
+               </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 const AdjustmentSlider = ({ label, value, onChange, min, max, unit = "%" }: any) => (
   <div className="space-y-3">
     <div className="flex justify-between text-[10px] font-black uppercase tracking-widest opacity-60">
@@ -296,7 +452,15 @@ export default function App() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showApiModal, setShowApiModal] = useState(false);
-  const [userApiKey, setUserApiKey] = useState(() => localStorage.getItem('user_remove_bg_key') || '');
+  const [apiKeys, setApiKeys] = useState(() => {
+    const saved = localStorage.getItem('yugal_api_keys');
+    return saved ? JSON.parse(saved) : { removeBg: '', cloudName: '', cloudApiKey: '', cloudApiSecret: '' };
+  });
+
+  const saveApiKeys = (keys: any) => {
+    setApiKeys(keys);
+    localStorage.setItem('yugal_api_keys', JSON.stringify(keys));
+  };
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('theme') === 'dark' || 
@@ -333,13 +497,18 @@ export default function App() {
       setPrefs(data.prefs || prefs);
       setTotalCopies(data.totalCopies || 8);
       
-      // We don't store photos in localStorage, only metadata.
-      // We'll need to re-hydrate blob URLs from IndexedDB.
       if (data.photos) {
           hydratePhotos(data.photos);
       }
     }
   }, []);
+
+  // API Key Check on First Run (after splash)
+  useEffect(() => {
+    if (!showSplash && (!apiKeys.removeBg || !apiKeys.cloudApiKey)) {
+      setShowApiModal(true);
+    }
+  }, [showSplash]);
 
   const hydratePhotos = async (metadata: any[]) => {
     const hydrated = await Promise.all(metadata.map(async (m) => {
@@ -519,6 +688,12 @@ export default function App() {
   const handleEnhance = async (id: string) => {
     const photo = photos.find(p => p.id === id);
     if (!photo) return;
+    
+    if (!apiKeys.cloudApiKey || !apiKeys.cloudName) {
+      setShowApiModal(true);
+      return;
+    }
+
     setIsProcessing(true);
     try {
       const resp = await fetch(photo.processedUrl || photo.blobUrl);
@@ -531,12 +706,21 @@ export default function App() {
 
       const res = await fetch('/api/enhance', { 
         method: 'POST', 
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-Cloud-Name': apiKeys.cloudName,
+          'X-User-Cloud-Key': apiKeys.cloudApiKey,
+          'X-User-Cloud-Secret': apiKeys.cloudApiSecret
+        },
         body: JSON.stringify({ image: base64 }) 
       });
       
       const contentType = res.headers.get('content-type');
       if (!res.ok) {
+        if (res.status === 401 || res.status === 403 || res.status === 429) {
+          setShowApiModal(true);
+          throw new Error('API limit reached or invalid keys. Please update your Cloudinary credentials.');
+        }
         let msg = 'Enhancement failed';
         if (contentType && contentType.includes('application/json')) {
           const err = await res.json();
@@ -545,17 +729,13 @@ export default function App() {
         throw new Error(msg);
       }
 
-      if (contentType && contentType.includes('application/json')) {
-        const data = await res.json();
-        if (data.url) {
-          updatePhoto(id, { 
-            processedUrl: data.url, 
-            version: photo.version + 1,
-            history: [...photo.history, { url: photo.processedUrl || photo.blobUrl, date: new Date().toISOString(), label: 'AI Enhanced' }]
-          });
-        }
-      } else {
-        throw new Error('Server returned invalid format');
+      const data = await res.json();
+      if (data.url) {
+        updatePhoto(id, { 
+          processedUrl: data.url, 
+          version: photo.version + 1,
+          history: [...photo.history, { url: photo.processedUrl || photo.blobUrl, date: new Date().toISOString(), label: 'AI Enhanced' }]
+        });
       }
     } catch (e: any) {
       console.error(e);
@@ -568,6 +748,12 @@ export default function App() {
   const handleRemoveBg = async (id: string) => {
     const photo = photos.find(p => p.id === id);
     if (!photo) return;
+
+    if (!apiKeys.removeBg) {
+      setShowApiModal(true);
+      return;
+    }
+
     setIsProcessing(true);
     try {
       const resp = await fetch(photo.processedUrl || photo.blobUrl);
@@ -582,24 +768,17 @@ export default function App() {
         method: 'POST', 
         headers: { 
           'Content-Type': 'application/json',
-          ...(userApiKey ? { 'X-User-Api-Key': userApiKey } : {})
+          'X-User-Api-Key': apiKeys.removeBg
         },
         body: JSON.stringify({ image: base64 })
       });
 
       const contentType = res.headers.get('content-type');
-      if (res.status === 400) {
-        if (contentType && contentType.includes('application/json')) {
-          const err = await res.json();
-          if (err.code === 'LIMIT_REACHED') {
-            setShowApiModal(true);
-            setIsProcessing(false);
-            return;
-          }
-        }
-      }
-
       if (!res.ok) {
+        if (res.status === 429 || res.status === 401 || res.status === 403) {
+          setShowApiModal(true);
+          throw new Error('API limit reached or invalid key. Please update your Remove.bg key.');
+        }
         let msg = 'Remove BG failed';
         if (contentType && contentType.includes('application/json')) {
           const err = await res.json();
@@ -1336,41 +1515,12 @@ export default function App() {
       </AnimatePresence>
 
       {/* API MODAL */}
-      <AnimatePresence>
-        {showApiModal && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[500] ios-glass flex items-center justify-center p-6"
-          >
-            <div className={cn("p-8 max-w-sm w-full space-y-6", UI.card)}>
-               <div className="w-16 h-16 bg-ios-red/10 rounded-2xl flex items-center justify-center">
-                  <ShieldCheck className="text-ios-red w-8 h-8" />
-               </div>
-               <div className="space-y-2">
-                 <h3 className="text-xl font-bold">Limit Reached</h3>
-                 <p className="text-sm text-[var(--text-secondary)]">Please enter your personal Remove.bg API key to continue. It stays on your device.</p>
-               </div>
-               <input 
-                  type="text" 
-                  value={userApiKey}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setUserApiKey(val);
-                    localStorage.setItem('user_remove_bg_key', val);
-                  }}
-                  placeholder="Paste API Key..."
-                  className="w-full p-4 rounded-xl border border-[var(--separator)] bg-[var(--bg-primary)] text-sm focus:ring-2 focus:ring-ios-blue focus:outline-none"
-               />
-               <div className="flex gap-2 pt-2">
-                  <button onClick={() => setShowApiModal(false)} className="flex-1 py-4 bg-[var(--bg-primary)] rounded-xl font-bold text-sm">Dismiss</button>
-                  <button onClick={() => setShowApiModal(false)} className="flex-1 py-4 bg-ios-blue text-white rounded-xl font-bold text-sm">Save Key</button>
-               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ApiKeyModal 
+        isOpen={showApiModal} 
+        onClose={() => setShowApiModal(false)}
+        keys={apiKeys}
+        onSave={saveApiKeys}
+      />
 
       {/* SETTINGS DRAWER */}
       <AnimatePresence>
@@ -1473,6 +1623,12 @@ export default function App() {
                            <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow-sm", prefs.autoDelete ? "translate-x-5" : "translate-x-0")} />
                         </button>
                      </div>
+                     <button 
+                       onClick={() => setShowApiModal(true)}
+                       className="w-full py-5 bg-ios-blue/10 text-ios-blue rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-ios-blue/20 transition-all active:scale-95 shadow-lg shadow-ios-blue/10 mb-4"
+                     >
+                       <Key className="w-5 h-5" /> Configure API Keys
+                     </button>
                      <button 
                        onClick={clearAllData}
                        className="w-full py-5 bg-ios-red/10 text-ios-red rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-ios-red/20 transition-all active:scale-95 shadow-lg shadow-ios-red/10"
