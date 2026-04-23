@@ -139,6 +139,12 @@ app.post('/api/enhance', async (req: any, res) => {
     const userApiKey = req.headers['x-user-cloud-key'];
     const userApiSecret = req.headers['x-user-cloud-secret'];
 
+    console.log('Enhance request headers keys:', {
+      hasCloudName: !!userCloudName,
+      hasApiKey: !!userApiKey,
+      hasApiSecret: !!userApiSecret
+    });
+
     if (!userCloudName || !userApiKey || !userApiSecret) {
       return res.status(401).json({ error: 'Cloudinary credentials missing. Please configure them in Settings.', code: 'LIMIT_REACHED' });
     }
@@ -176,6 +182,10 @@ app.post('/api/remove-bg', async (req: any, res) => {
 
     const userKey = req.headers['x-user-api-key'];
     const apiKey = userKey;
+
+    console.log('RemoveBG request header key:', {
+      hasApiKey: !!userKey
+    });
 
     if (!apiKey) {
       return res.status(401).json({ error: 'Remove.bg API key missing', code: 'LIMIT_REACHED' });
@@ -248,3 +258,5 @@ async function startServer() {
 }
 
 startServer();
+
+export default app;

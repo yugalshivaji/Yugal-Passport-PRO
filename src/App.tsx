@@ -276,7 +276,13 @@ const ApiKeyModal = ({ isOpen, onClose, keys, onSave }: { isOpen: boolean, onClo
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(localKeys);
+    const trimmedKeys = {
+      removeBg: localKeys.removeBg?.trim() || '',
+      cloudName: localKeys.cloudName?.trim() || '',
+      cloudApiKey: localKeys.cloudApiKey?.trim() || '',
+      cloudApiSecret: localKeys.cloudApiSecret?.trim() || ''
+    };
+    onSave(trimmedKeys);
     onClose();
   };
 
@@ -726,7 +732,7 @@ export default function App() {
         let msg = 'Enhancement failed';
         if (contentType && contentType.includes('application/json')) {
           const err = await res.json();
-          msg = err.error || msg;
+          msg = err.details || err.error || msg;
         }
         throw new Error(msg);
       }
@@ -784,7 +790,7 @@ export default function App() {
         let msg = 'Remove BG failed';
         if (contentType && contentType.includes('application/json')) {
           const err = await res.json();
-          msg = err.error || msg;
+          msg = err.details || err.error || msg;
         }
         throw new Error(msg);
       }
